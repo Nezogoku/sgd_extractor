@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 
         ifstream sgd_file(sourceArg[index], ios::binary);
 
-        if (sgd_file.get(buff)) {
+        if (!sgd_file.is_open()) {
             cerr << "Unable to open " << sourceArg[index] << " . . ." << endl;
             continue;
         }
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
 
         working_offset += 0x10;
 
-        while (!sgd_file.eof()) {
+        while (sgd_file.get(buff)) {
             sgd_file.seekg(working_offset);
             sgd_file.read((char*)(&chunk), sizeof(uint32_t));
 
