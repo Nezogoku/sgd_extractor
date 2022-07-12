@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
              sgxd_length, rgnd_length, seqd_length, wave_length, name_length,
              sgxd_name_offset, sgxd_sample_offset,
              rgnd_data_offset, wave_data_offset, name_data_offset;
+    char buff;
 
     for (int i = 1; i < argc; ++i) {
         string source = argv[i],
@@ -108,7 +109,7 @@ int main(int argc, char *argv[]) {
 
         ifstream sgd_file(sourceArg[index], ios::binary);
 
-        if (!sgd_file.is_open()) {
+        if (sgd_file.get(buff)) {
             cerr << "Unable to open " << sourceArg[index] << " . . ." << endl;
             continue;
         }
@@ -116,7 +117,7 @@ int main(int argc, char *argv[]) {
 
         working_offset = 0x00;
         sgd_file.seekg(working_offset);
-        sgd_file.read(reinterpret_cast<char*>(&chunk), sizeof(uint32_t));
+        sgd_file.read((char*)(&chunk), sizeof(uint32_t));
 
         if (htonl(chunk) != SGXD) {
             cerr << sourceArg[index] << " is not an sgd . . ." << endl;
@@ -125,20 +126,20 @@ int main(int argc, char *argv[]) {
         }
 
         sgd_file.seekg(working_offset + 0x04);
-        sgd_file.read(reinterpret_cast<char*>(&sgxd_name_offset), sizeof(uint32_t));
+        sgd_file.read((char*)(&sgxd_name_offset), sizeof(uint32_t));
 
         sgd_file.seekg(working_offset + 0x08);
-        sgd_file.read(reinterpret_cast<char*>(&sgxd_sample_offset), sizeof(uint32_t));
+        sgd_file.read((char*)(&sgxd_sample_offset), sizeof(uint32_t));
 
         sgd_file.seekg(working_offset + 0x0C);
-        sgd_file.read(reinterpret_cast<char*>(&sgxd_length), sizeof(uint32_t));
+        sgd_file.read((char*)(&sgxd_length), sizeof(uint32_t));
         sgxd_length -= 0x80000000;
 
         working_offset += 0x10;
 
         while (!sgd_file.eof()) {
             sgd_file.seekg(working_offset);
-            sgd_file.read(reinterpret_cast<char*>(&chunk), sizeof(uint32_t));
+            sgd_file.read((char*)(&chunk), sizeof(uint32_t));
 
             if (htonl(chunk) == RGND) {
                 if (log) cout << "RGND header found at position: 0x" << hex << working_offset << dec << endl;
@@ -146,10 +147,10 @@ int main(int argc, char *argv[]) {
                 rgnd_offset = working_offset;
 
                 sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read(reinterpret_cast<char*>(&rgnd_length), sizeof(uint32_t));
+                sgd_file.read((char*)(&rgnd_length), sizeof(uint32_t));
 
                 sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read(reinterpret_cast<char*>(&chunk), sizeof(uint32_t));
+                sgd_file.read((char*)(&chunk), sizeof(uint32_t));
                 rgnd_data_offset = (working_offset + 0x10) + (chunk * 0x08);
                 if (log) cout << "RGND data found at position: 0x" << hex << rgnd_data_offset << dec << endl;
 
@@ -164,7 +165,7 @@ int main(int argc, char *argv[]) {
                 seqd_offset = working_offset;
 
                 sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read(reinterpret_cast<char*>(&seqd_length), sizeof(uint32_t));
+                sgd_file.read((char*)(&seqd_length), sizeof(uint32_t));
 
                 working_offset += (seqd_length + 0x08);
                 if (log) cout << endl;
@@ -175,10 +176,10 @@ int main(int argc, char *argv[]) {
                 wave_offset = working_offset;
 
                 sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read(reinterpret_cast<char*>(&wave_length), sizeof(uint32_t));
+                sgd_file.read((char*)(&wave_length), sizeof(uint32_t));
 
                 sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read(reinterpret_cast<char*>(&numsnd), sizeof(uint32_t));
+                sgd_file.read((char*)(&numsnd), sizeof(uint32_t));
                 if (log) cout << "Number of samples: " << numsnd << endl;
 
                 wave_data_offset = working_offset + 0x10;
@@ -194,10 +195,10 @@ int main(int argc, char *argv[]) {
                 wave_offset = working_offset;
 
                 sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read(reinterpret_cast<char*>(&name_length), sizeof(uint32_t));
+                sgd_file.read((char*)(&name_length), sizeof(uint32_t));
 
                 sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read(reinterpret_cast<char*>(&numnam), sizeof(uint32_t));
+                sgd_file.read((char*)(&numnam), sizeof(uint32_t));
                 if (log) cout << "Number of names: " << numnam << endl;
 
                 name_data_offset = working_offset + 0x10;
@@ -236,15 +237,15 @@ int main(int argc, char *argv[]) {
             working_offset = name_data_offset + (d * 0x08);
 
             sgd_file.seekg(working_offset + 0x00);
-            sgd_file.read(reinterpret_cast<char*>(&temp.nID), sizeof(uint16_t));
+            sgd_file.read((char*)(&temp.nID), sizeof(uint16_t));
             if (log) cout << "Name ID: " << temp.nID << endl;
 
             sgd_file.seekg(working_offset + 0x02);
-            sgd_file.read(reinterpret_cast<char*>(&temp.nType), sizeof(uint16_t));
+            sgd_file.read((char*)(&temp.nType), sizeof(uint16_t));
             if (log) cout << "Name type: 0x" << hex << temp.nType << dec << endl;
 
             sgd_file.seekg(working_offset + 0x04);
-            sgd_file.read(reinterpret_cast<char*>(&temp.nOffset), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp.nOffset), sizeof(uint32_t));
             if (log) cout << "Name offset: 0x" << hex << temp.nOffset << dec << endl;
 
             //Type 0x2001 denotes sample maybe?
@@ -279,7 +280,6 @@ int main(int argc, char *argv[]) {
         if (log) cout << endl;
 
         //Get names of samples
-        char buff;
         vector<string> sndnames;
         for (auto offset_list : name_definitions) {
             string sndname = "";
@@ -323,40 +323,40 @@ int main(int argc, char *argv[]) {
             working_offset = wave_data_offset + (w * 0x38);
 
             sgd_file.seekg(working_offset + 0x04);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.name_offset), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.name_offset), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x08);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.codec), sizeof(uint8_t));
+            sgd_file.read((char*)(&temp_wave.codec), sizeof(uint8_t));
 
             sgd_file.seekg(working_offset + 0x09);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.channels), sizeof(uint8_t));
+            sgd_file.read((char*)(&temp_wave.channels), sizeof(uint8_t));
 
             sgd_file.seekg(working_offset + 0x0C);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.sample_rate), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.sample_rate), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x10);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.info_type), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.info_type), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x14);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.info_value), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.info_value), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x20);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.sample_size), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.sample_size), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x24);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.loop_start), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.loop_start), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x28);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.loop_end), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.loop_end), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x2C);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.stream_size), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.stream_size), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x30);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.stream_offset), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.stream_offset), sizeof(uint32_t));
 
             sgd_file.seekg(working_offset + 0x34);
-            sgd_file.read(reinterpret_cast<char*>(&temp_wave.stream_size_full), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_wave.stream_size_full), sizeof(uint32_t));
 
             wave_data.push_back(temp_wave);
         }
@@ -383,23 +383,23 @@ int main(int argc, char *argv[]) {
             if (log) cout << "Current offset: 0x" << hex << working_offset << dec << endl;
 
             sgd_file.seekg(working_offset + 0x00);
-            sgd_file.read(reinterpret_cast<char*>(&temp_rgnd.determinator), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_rgnd.determinator), sizeof(uint32_t));
             if (log) cout << "Determinator: " << temp_rgnd.determinator << endl;
 
             sgd_file.seekg(working_offset + 0x18);
-            sgd_file.read(reinterpret_cast<char*>(&temp_rgnd.range_low), sizeof(uint8_t));
+            sgd_file.read((char*)(&temp_rgnd.range_low), sizeof(uint8_t));
             if (log) cout << "Lowest range: " << int(temp_rgnd.range_low) << endl;
 
             sgd_file.seekg(working_offset + 0x19);
-            sgd_file.read(reinterpret_cast<char*>(&temp_rgnd.range_high), sizeof(uint8_t));
+            sgd_file.read((char*)(&temp_rgnd.range_high), sizeof(uint8_t));
             if (log) cout << "Highest range: " << int(temp_rgnd.range_high) << endl;
 
             sgd_file.seekg(working_offset + 0x1C);
-            sgd_file.read(reinterpret_cast<char*>(&temp_rgnd.root_key), sizeof(uint8_t));
+            sgd_file.read((char*)(&temp_rgnd.root_key), sizeof(uint8_t));
             if (log) cout << "Root key: " << int(temp_rgnd.root_key) << endl;
 
             sgd_file.seekg(working_offset + 0x34);
-            sgd_file.read(reinterpret_cast<char*>(&temp_rgnd.sample_id), sizeof(uint32_t));
+            sgd_file.read((char*)(&temp_rgnd.sample_id), sizeof(uint32_t));
             if (log) cout << "Sample ID: " << temp_rgnd.sample_id << endl;
 
             rgnd_data.push_back(temp_rgnd);
@@ -412,7 +412,6 @@ int main(int argc, char *argv[]) {
             sgd_file.seekg(sgxd_sample_offset + wave_data[w].stream_offset);
 
             for (int s = 0; s < wave_data[w].stream_size; ++s) {
-                char buff;
                 sgd_file.get(buff);
                 wave_data[w].data.push_back(buff);
             }
@@ -520,19 +519,19 @@ int main(int argc, char *argv[]) {
             }
 
             wavFile.write(RIFF, sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&fSize), sizeof(uint32_t));
+            wavFile.write((const char*)(&fSize), sizeof(uint32_t));
             wavFile.write(rWAVE, sizeof(uint32_t));
             wavFile.write(fmt_, sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&fmtSize), sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&audFmt), sizeof(uint16_t));
-            wavFile.write(reinterpret_cast<const char*>(&channels), sizeof(uint16_t));
-            wavFile.write(reinterpret_cast<const char*>(&sampRate), sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&byteRate), sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&blockAlign), sizeof(uint16_t));
-            wavFile.write(reinterpret_cast<const char*>(&bps), sizeof(uint16_t));
+            wavFile.write((const char*)(&fmtSize), sizeof(uint32_t));
+            wavFile.write((const char*)(&audFmt), sizeof(uint16_t));
+            wavFile.write((const char*)(&channels), sizeof(uint16_t));
+            wavFile.write((const char*)(&sampRate), sizeof(uint32_t));
+            wavFile.write((const char*)(&byteRate), sizeof(uint32_t));
+            wavFile.write((const char*)(&blockAlign), sizeof(uint16_t));
+            wavFile.write((const char*)(&bps), sizeof(uint16_t));
             wavFile.write(DATA, sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(&wavSize), sizeof(uint32_t));
-            wavFile.write(reinterpret_cast<const char*>(wave_data[id].pcmle.data()), wavSize);
+            wavFile.write((const char*)(&wavSize), sizeof(uint32_t));
+            wavFile.write((const char*)(wave_data[id].pcmle.data()), wavSize);
 
             wavFile.close();
             cout << "Successfully wrote to " << sample_path << endl;
