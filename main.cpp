@@ -248,7 +248,7 @@ int main(int argc, char *argv[]) {
             sgd_file.read((char*)(&temp.nOffset), sizeof(uint32_t));
             if (log) cout << "Name offset: 0x" << hex << temp.nOffset << dec << endl;
 
-            //Type 0x2001 denotes sample maybe?
+            //Type 0x2000 to 0x2FFF denotes sample maybe?
             if (temp.nType >= 0x2000 && temp.nType < 0x3000) {
                 name_definitions.push_back(temp);
                 if (log) cout << "Sample name found at position: 0x" << hex << temp.nOffset << dec << endl;
@@ -256,30 +256,34 @@ int main(int argc, char *argv[]) {
         }
 
         //Reorganize names
-        for (int a = 0; a < name_definitions.size(); ++a) {
-            for (int b = a + 1; b < name_definitions.size(); ++b) {
-                if (name_definitions[a].nType > name_definitions[b].nType) {
+        for (int i = 0; i < 2; ++i) {
+            for (int a = 0; a < name_definitions.size(); ++a) {
+                for (int b = a + 1; b < name_definitions.size(); ++b) {
+                    if (i == 0) {
+                        if (name_definitions[a].nType > name_definitions[b].nType) {
 
-                    name_def temp = name_definitions[a];
-                    name_definitions[a] = name_definitions[b];
-                    name_definitions[b] = temp;
+                            name_def temp = name_definitions[a];
+                            name_definitions[a] = name_definitions[b];
+                            name_definitions[b] = temp;
+                        }
+                    }
+                    else {
+                        if (name_definitions[a].nType == name_definitions[b].nType &&
+                            name_definitions[a].nID > name_definitions[b].nID) {
+
+                            name_def temp = name_definitions[a];
+                            name_definitions[a] = name_definitions[b];
+                            name_definitions[b] = temp;
+                        }
+                    }
                 }
             }
         }
-        for (int a = 0; a < name_definitions.size(); ++a) {
-            for (int b = a + 1; b < name_definitions.size(); ++b) {
-                if (name_definitions[a].nType == name_definitions[b].nType &&
-                    name_definitions[a].nID > name_definitions[b].nID) {
 
-                    name_def temp = name_definitions[a];
-                    name_definitions[a] = name_definitions[b];
-                    name_definitions[b] = temp;
-                }
-            }
-        }
         if (log) cout << endl;
 
         //Get names of samples
+        int namToIgnore = 0;
         vector<string> sndnames;
         for (auto offset_list : name_definitions) {
             string sndname = "";
@@ -291,6 +295,9 @@ int main(int argc, char *argv[]) {
                 if (buff != 0x00) sndname += buff;
             } while (buff != 0x00);
             sndname = sndname.substr(0, sndname.find_last_of('.'));
+
+            //Skip dummy names later
+            if (sndname == "dummy") namToIgnore += 1;
 
             sndnames.push_back(sndname);
             if (log) cout << "Name ID: " << offset_list.nID << endl;
@@ -361,6 +368,11 @@ int main(int argc, char *argv[]) {
             wave_data.push_back(temp_wave);
         }
 
+
+        vector<bool> ignore(wave_data.size(), false);
+        int sndToIgnore = 0;
+
+        //Attempt to fix any sample size issues
         for (int check = 0; check < wave_data.size(); ++check) {
             if (log) cout << "Size of sample: 0x" << hex << wave_data[check].stream_size << dec << endl;
 
@@ -370,6 +382,12 @@ int main(int argc, char *argv[]) {
             }
 
             if (log) cout << "New size of sample: 0x" << hex << wave_data[check].stream_size << dec << endl;
+
+            //If new stream size is still 0x00, ignore it so as to fix the naming issues
+            if (wave_data[check].stream_size == 0x00) {
+                ignore[check] = true;
+                sndToIgnore += 1;
+            }
         }
         if (log) cout << endl;
 
@@ -409,6 +427,8 @@ int main(int argc, char *argv[]) {
 
         //Get sample data
         for (int w = 0; w < numsnd; ++w) {
+            if (ignore[w]) continue;
+
             sgd_file.seekg(sgxd_sample_offset + wave_data[w].stream_offset);
 
             for (int s = 0; s < wave_data[w].stream_size; ++s) {
@@ -450,19 +470,31 @@ int main(int argc, char *argv[]) {
 
         sgd_file.close();
 
+        numsnd - sndToIgnore;
+
 
         if (!(_mkdir(newDir[index].c_str()))) cout << "Created directory" << endl;
         if (!(_chdir(newDir[index].c_str()))) cout << "Moved to directory" << endl;
         cout << endl;
 
-        while (sndnames.size() < numsnd) {
+
+        //Final name checks
+        if (sndnames.size() > numsnd) {
+            int toRemove = (sndnames.size() - numsnd) + namToIgnore;
+            sndnames.erase(sndnames.begin(), sndnames.begin() + toRemove);
+            if (log) cout << "Removed " << toRemove << " unused names from name bank" << endl;
+        }
+
+        //Take into account that names are being ignored as well
+        while (sndnames.size() < (numsnd - namToIgnore)) {
             string tempsndnam = bank_name + '_' + to_string(sndnames.size());
             if (log) cout << "Added name: " << tempsndnam << endl;
             sndnames.push_back(tempsndnam);
         }
-        if (log) cout << endl;
+
 
         for (int defs = 0; defs < numrgd; ++defs) {
+            cout << endl;
             string sample_path;
 
             int root = rgnd_data[defs].root_key,
@@ -472,6 +504,7 @@ int main(int argc, char *argv[]) {
                 id = rgnd_data[defs].sample_id;
 
             if (wave_data[id].codec != PCM16BE && wave_data[id].codec != lPADPCM && wave_data[id].codec != sPADPCM) continue;
+            else if (ignore[id]) continue;
 
             if (low == high) used = high;
             else if (low == 0x00 && high == 0x7F) used = root - 0x12;
@@ -493,6 +526,8 @@ int main(int argc, char *argv[]) {
 
             fSize = 0x20 + wavSize;
             if (log) cout << "Final file size: " << fSize << endl;
+
+
             if (log) cout << "Old sample rate: " << sampRate << endl;
 
             //Calculate new frequency...
