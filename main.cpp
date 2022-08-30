@@ -3,25 +3,31 @@
 #include <cstdio>
 #include <cmath>
 #include <direct.h>
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
 #include "decode.hpp"
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
-    #include <winsock2.h>
-#else
-    #include <arpa/inet.h>
-#endif
 
-using namespace std;
+using std::cerr;
+using std::cout;
+using std::dec;
+using std::endl;
+using std::hex;
+using std::ifstream;
+using std::ios;
+using std::ofstream;
+using std::remove;
+using std::string;
+using std::vector;
 
 
-#define SGXD 0x53475844
-#define RGND 0x52474E44
-#define SEQD 0x53455144
-#define WAVE 0x57415645
-#define NAME 0x4E414D45
+#define SGXD    0x53475844
+#define RGND    0x52474E44
+#define SEQD    0x53455144
+#define WAVE    0x57415645
+#define NAME    0x4E414D45
 
 #define PCM16BE 0x01
 #define OGGVORB 0x02
@@ -30,18 +36,26 @@ using namespace std;
 #define sPADPCM 0x05
 #define PS3_AC3 0x06
 
-#define RIFF "RIFF"
-#define rWAVE "WAVE"
-#define fmt_ "fmt "
-#define DATA "data"
+#define RIFF    "RIFF"
+#define rWAVE   "WAVE"
+#define fmt_    "fmt "
+#define DATA    "data"
 
 
 struct rgnd_def {
-    uint32_t determinator;
+    uint32_t determinator_snd;
+    uint32_t determinator_sfx;
     uint8_t range_low;
     uint8_t range_high;
     uint8_t root_key;
+    int8_t correction;
+    int8_t pan;
     uint32_t sample_id;
+};
+
+struct seqd_def {
+    uint32_t name_offset;
+    uint8_t sequence_format;
 };
 
 struct wave_def {
@@ -60,265 +74,220 @@ struct wave_def {
 
     vector<char> data;
     vector<int16_t> pcmle;
+    string name;
 };
 
 struct name_def {
-    uint16_t nID;
-    uint16_t nType;
-    uint32_t nOffset;
+    uint16_t name_id;
+    uint16_t name_type;
+    uint32_t name_offset;
+
+    string name;
 };
 
 
-int main(int argc, char *argv[]) {
-    bool log = false;
+void setReverse(uint32_t &tmpInt) {
+    uint32_t buffer = 0x00;
+    for (int b = 0; b < 4; ++b) {
+        buffer |= uint8_t((tmpInt >> (0x00 + (8 * b))) & 0xFF);
+        if (b != 3) buffer <<= 8;
+    }
+    tmpInt = buffer;
+}
 
-    vector <string> sourceArg,
-                    newDir;
-
-    string bank_name;
-    uint32_t working_offset, chunk, numsnd, numrgd, numnam,
-             sgxd_offset, rgnd_offset, seqd_offset, wave_offset, name_offset,
-             sgxd_length, rgnd_length, seqd_length, wave_length, name_length,
-             sgxd_name_offset, sgxd_sample_offset,
-             rgnd_data_offset, wave_data_offset, name_data_offset;
+bool findSGXD(ifstream &in, int &dex) {
+    uint32_t chunk;
     char buff;
+    bool found = false;
 
-    for (int i = 1; i < argc; ++i) {
-        string source = argv[i],
-               direct;
+    while (!found && in.get(buff)) {
+        in.seekg(dex);
+        in.read((char*)(&chunk), sizeof(uint32_t));
+        setReverse(chunk);
 
-        if (source == "-d") {
-            log = true;
-            continue;
-        }
-
-        source.erase(remove(source.begin(), source.end(), '\"'), source.end());
-        direct = source.substr(0, source.find_last_of("\\/") + 1);
-
-        sourceArg.push_back(source);
-        newDir.push_back(direct);
+        if (chunk == SGXD) found = true;
+        else dex += 0x01;
     }
 
+    return found;
+}
 
-    for (int index = 0; index < sourceArg.size(); ++index) {
+bool getSamples(ifstream &in, int dex, bool log) {
+    if (log) cout << std::setfill('0') << std::right;
+
+    bool successful = false;
+    int counter = 0;
+
+    while (findSGXD(in, dex)) {
+        cout << "SGD found: " << ++counter << endl;
+
+        string bank_name, newDir;
+        uint32_t chunk, numsnd, numrgd, numnam,
+                 sgxd_offset, rgnd_offset, seqd_offset, wave_offset, name_offset,
+                 data_length, rgnd_length, seqd_length, wave_length, name_length,
+                 sgxd_name_offset, data_offset,
+                 rgnd_data_offset, seqd_data_offset, wave_data_offset, name_data_offset;
         bool hasSamples = false,
              hasNames = false,
-             hasDefinitions = false;
+             hasDefinitions = false,
+             hasSequences = false;
+        char buff;
 
+        sgxd_offset = dex;
 
+        in.seekg(dex + 0x04);
+        in.read((char*)(&sgxd_name_offset), sizeof(uint32_t));
 
-        ifstream sgd_file(sourceArg[index], ios::binary);
+        in.seekg(dex + 0x08);
+        in.read((char*)(&data_offset), sizeof(uint32_t));
 
-        if (!sgd_file.is_open()) {
-            cerr << "Unable to open " << sourceArg[index] << " . . ." << endl;
-            continue;
-        }
+        in.seekg(dex + 0x0C);
+        in.read((char*)(&data_length), sizeof(uint32_t));
+        data_length -= 0x80000000;
 
+        dex += 0x10;
+        while (in.get(buff) && dex < (sgxd_offset + data_offset + data_length)) {
+            in.seekg(dex);
+            in.read((char*)(&chunk), sizeof(uint32_t));
+            setReverse(chunk);
 
-        working_offset = 0x00;
-        sgd_file.seekg(working_offset);
-        sgd_file.read((char*)(&chunk), sizeof(uint32_t));
-
-        if (htonl(chunk) != SGXD) {
-            cerr << sourceArg[index] << " is not an sgd . . ." << endl;
-            sgd_file.close();
-            continue;
-        }
-
-        sgd_file.seekg(working_offset + 0x04);
-        sgd_file.read((char*)(&sgxd_name_offset), sizeof(uint32_t));
-
-        sgd_file.seekg(working_offset + 0x08);
-        sgd_file.read((char*)(&sgxd_sample_offset), sizeof(uint32_t));
-
-        sgd_file.seekg(working_offset + 0x0C);
-        sgd_file.read((char*)(&sgxd_length), sizeof(uint32_t));
-        sgxd_length -= 0x80000000;
-
-        working_offset += 0x10;
-
-        while (sgd_file.get(buff)) {
-            sgd_file.seekg(working_offset);
-            sgd_file.read((char*)(&chunk), sizeof(uint32_t));
-
-            if (htonl(chunk) == RGND) {
-                if (log) cout << "RGND header found at position: 0x" << hex << working_offset << dec << endl;
+            if (chunk == RGND) {
+                if (log) cout << "\nRGND header found at position: 0x" << hex << dex << dec << endl;
                 hasDefinitions = true;
-                rgnd_offset = working_offset;
+                rgnd_offset = dex;
 
-                sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read((char*)(&rgnd_length), sizeof(uint32_t));
+                in.seekg(dex + 0x04);
+                in.read((char*)(&rgnd_length), sizeof(uint32_t));
 
-                sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read((char*)(&chunk), sizeof(uint32_t));
-                rgnd_data_offset = (working_offset + 0x10) + (chunk * 0x08);
+                in.seekg(dex + 0x0C);
+                in.read((char*)(&chunk), sizeof(uint32_t));
+                rgnd_data_offset = (dex + 0x10) + (chunk * 0x08);
                 if (log) cout << "RGND data found at position: 0x" << hex << rgnd_data_offset << dec << endl;
 
                 numrgd = (rgnd_offset + 0x08 + rgnd_length) - rgnd_data_offset;
                 numrgd = std::floor(double(numrgd) / 0x38);
 
-                working_offset += (rgnd_length + 0x08);
-                if (log) cout << endl;
+                dex += (rgnd_length + 0x08);
             }
-            else if (htonl(chunk) == SEQD) {
-                if (log) cout << "SEQD header found at position: 0x" << hex << working_offset << dec << endl;
-                seqd_offset = working_offset;
+            else if (chunk == SEQD) {
+                if (log) cout << "\nSEQD header found at position: 0x" << hex << dex << dec << endl;
+                hasSequences = true;
+                seqd_offset = dex;
 
-                sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read((char*)(&seqd_length), sizeof(uint32_t));
+                in.seekg(dex + 0x04);
+                in.read((char*)(&seqd_length), sizeof(uint32_t));
 
-                working_offset += (seqd_length + 0x08);
-                if (log) cout << endl;
+                seqd_data_offset = dex + 0x08;
+
+                dex += (seqd_length + 0x08);
             }
-            else if (htonl(chunk) == WAVE) {
-                if (log) cout << "WAVE header found at position: 0x" << hex << working_offset << dec << endl;
+            else if (chunk == WAVE) {
+                if (log) cout << "\nWAVE header found at position: 0x" << hex << dex << dec << endl;
                 hasSamples = true;
-                wave_offset = working_offset;
+                wave_offset = dex;
 
-                sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read((char*)(&wave_length), sizeof(uint32_t));
+                in.seekg(dex + 0x04);
+                in.read((char*)(&wave_length), sizeof(uint32_t));
 
-                sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read((char*)(&numsnd), sizeof(uint32_t));
+                in.seekg(dex + 0x0C);
+                in.read((char*)(&numsnd), sizeof(uint32_t));
                 if (log) cout << "Number of samples: " << numsnd << endl;
 
-                wave_data_offset = working_offset + 0x10;
+                wave_data_offset = dex + 0x10;
                 if (log) cout << "WAVE data found at position: 0x" << hex << wave_data_offset << dec << endl;
 
-                working_offset += (wave_length + 0x08);
-                if (log) cout << endl;
+                dex += (wave_length + 0x08);
             }
-            else if (htonl(chunk) == NAME) {
+            else if (chunk == NAME) {
                 hasNames = true;
 
-                if (log) cout << "NAME header found at position: 0x" << hex << working_offset << dec << endl;
-                wave_offset = working_offset;
+                if (log) cout << "\nNAME header found at position: 0x" << hex << dex << dec << endl;
+                wave_offset = dex;
 
-                sgd_file.seekg(working_offset + 0x04);
-                sgd_file.read((char*)(&name_length), sizeof(uint32_t));
+                in.seekg(dex + 0x04);
+                in.read((char*)(&name_length), sizeof(uint32_t));
 
-                sgd_file.seekg(working_offset + 0x0C);
-                sgd_file.read((char*)(&numnam), sizeof(uint32_t));
+                in.seekg(dex + 0x0C);
+                in.read((char*)(&numnam), sizeof(uint32_t));
                 if (log) cout << "Number of names: " << numnam << endl;
 
-                name_data_offset = working_offset + 0x10;
+                name_data_offset = dex + 0x10;
                 if (log) cout << "NAME data found at position: 0x" << hex << name_data_offset << dec << endl;
 
-                working_offset += (name_length + 0x08);
+                dex += (name_length + 0x08);
                 if (log) cout << endl;
                 break;
             }
-            else working_offset += 0x04;
+            else dex += 0x04;
         }
-        if (log) cout << endl;
 
         if (!hasDefinitions) {
-            cerr << sourceArg[index] << " isn't a sound bank, so can't be parsed at the moment. . ." << endl;
-            sgd_file.close();
+            cerr << "This file isn't a sound bank, so can't be parsed at the moment . . ." << endl;
             continue;
         }
         if (!hasSamples) {
-            cerr << "There might be no samples in " << sourceArg[index] << " . . ." << endl;
-            sgd_file.close();
+            cerr << "There might be no samples in this file . . ." << endl;
             continue;
         }
         if (!hasNames) {
-            cerr << "No names in " << sourceArg[index] << " . . ." << endl;
-            sgd_file.close();
+            cerr << "No names in this file . . ." << endl;
             continue;
         }
 
 
         //Get name offsets of samples
         vector<name_def> name_definitions;
-
         for (int d = 0; d < numnam; ++d) {
             name_def temp;
-            working_offset = name_data_offset + (d * 0x08);
+            dex = name_data_offset + (d * 0x08);
 
-            sgd_file.seekg(working_offset + 0x00);
-            sgd_file.read((char*)(&temp.nID), sizeof(uint16_t));
-            if (log) cout << "Name ID: " << temp.nID << endl;
+            in.seekg(dex + 0x00);
+            in.read((char*)(&temp.name_id), sizeof(uint16_t));
+            if (log) cout << "Name ID: " << temp.name_id << endl;
 
-            sgd_file.seekg(working_offset + 0x02);
-            sgd_file.read((char*)(&temp.nType), sizeof(uint16_t));
-            if (log) cout << "Name type: 0x" << hex << temp.nType << dec << endl;
+            in.seekg(dex + 0x02);
+            in.read((char*)(&temp.name_type), sizeof(uint16_t));
+            if (log) cout << "Name type: 0x" << hex << temp.name_type << dec << endl;
 
-            sgd_file.seekg(working_offset + 0x04);
-            sgd_file.read((char*)(&temp.nOffset), sizeof(uint32_t));
-            if (log) cout << "Name offset: 0x" << hex << temp.nOffset << dec << endl;
+            in.seekg(dex + 0x04);
+            in.read((char*)(&temp.name_offset), sizeof(uint32_t));
+            if (log) cout << "Name offset: 0x" << hex << sgxd_offset + temp.name_offset << dec << endl;
 
             //Type 0x2000 to 0x2FFF denotes sample maybe?
-            if (temp.nType >= 0x2000 && temp.nType < 0x3000) {
+            if (temp.name_type >= 0x2000 && temp.name_type < 0x3000) {
                 name_definitions.push_back(temp);
-                if (log) cout << "Sample name found at position: 0x" << hex << temp.nOffset << dec << endl;
             }
         }
-
-        //Reorganize names
-        for (int i = 0; i < 2; ++i) {
-            for (int a = 0; a < name_definitions.size(); ++a) {
-                for (int b = a + 1; b < name_definitions.size(); ++b) {
-                    if (i == 0) {
-                        if (name_definitions[a].nType > name_definitions[b].nType) {
-
-                            name_def temp = name_definitions[a];
-                            name_definitions[a] = name_definitions[b];
-                            name_definitions[b] = temp;
-                        }
-                    }
-                    else {
-                        if (name_definitions[a].nType == name_definitions[b].nType &&
-                            name_definitions[a].nID > name_definitions[b].nID) {
-
-                            name_def temp = name_definitions[a];
-                            name_definitions[a] = name_definitions[b];
-                            name_definitions[b] = temp;
-                        }
-                    }
-                }
-            }
-        }
-
         if (log) cout << endl;
 
-        //Get names of samples
-        int namToIgnore = 0;
-        vector<string> sndnames;
+        //Get stored names
         for (auto offset_list : name_definitions) {
-            string sndname = "";
+            offset_list.name = "";
 
-            sgd_file.seekg(offset_list.nOffset);
-
+            in.seekg(offset_list.name_offset);
             do {
-                sgd_file.get(buff);
-                if (buff != 0x00) sndname += buff;
+                in.get(buff);
+                if (buff != 0x00) offset_list.name += buff;
             } while (buff != 0x00);
-            sndname = sndname.substr(0, sndname.find_last_of('.'));
 
-            //Skip dummy names later
-            if (sndname == "dummy") namToIgnore += 1;
-
-            sndnames.push_back(sndname);
-            if (log) cout << "Name ID: " << offset_list.nID << endl;
-            if (log) cout << "Name type: 0x" << hex << offset_list.nType << dec << endl;
-            if (log) cout << "Added name: " << sndname << endl;
+            if (log) cout << "Name ID: " << offset_list.name_id << endl;
+            if (log) cout << "Name type: 0x" << hex << offset_list.name_type << dec << endl;
+            if (log) cout << "Added name: " << offset_list.name << endl;
         }
         if (log) cout << endl;
 
 
         //Get bank name
         bank_name = "";
-        sgd_file.seekg(sgxd_name_offset);
-
+        in.seekg(sgxd_offset + sgxd_name_offset);
         do {
-            sgd_file.get(buff);
+            in.get(buff);
             if (buff != 0x00) bank_name += buff;
         } while (buff != 0x00);
 
         if (log) cout << "Bank name: " << bank_name << endl;
-        newDir[index] += '@' + bank_name;
-        if (log) cout << "Output directory: " << newDir[index] << endl;
+        newDir = '@' + bank_name;
+        if (log) cout << "Output directory: \"" << newDir << "\"" << endl;
         if (log) cout << endl;
 
 
@@ -327,69 +296,56 @@ int main(int argc, char *argv[]) {
         for (int w = 0; w < numsnd; ++w) {
             wave_def temp_wave;
 
-            working_offset = wave_data_offset + (w * 0x38);
+            dex = wave_data_offset + (w * 0x38);
 
-            sgd_file.seekg(working_offset + 0x04);
-            sgd_file.read((char*)(&temp_wave.name_offset), sizeof(uint32_t));
+            in.seekg(dex + 0x04);
+            in.read((char*)(&temp_wave.name_offset), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x08);
-            sgd_file.read((char*)(&temp_wave.codec), sizeof(uint8_t));
+            //Get sample name if specified
+            if (temp_wave.name_offset) {
+                temp_wave.name = "";
+                in.seekg(sgxd_offset + temp_wave.name_offset);
+                do {
+                    in.get(buff);
+                    if (buff != 0x00) temp_wave.name += buff;
+                } while (buff != 0x00);
+            }
 
-            sgd_file.seekg(working_offset + 0x09);
-            sgd_file.read((char*)(&temp_wave.channels), sizeof(uint8_t));
+            in.seekg(dex + 0x08);
+            in.read((char*)(&temp_wave.codec), sizeof(uint8_t));
 
-            sgd_file.seekg(working_offset + 0x0C);
-            sgd_file.read((char*)(&temp_wave.sample_rate), sizeof(uint32_t));
+            in.seekg(dex + 0x09);
+            in.read((char*)(&temp_wave.channels), sizeof(uint8_t));
 
-            sgd_file.seekg(working_offset + 0x10);
-            sgd_file.read((char*)(&temp_wave.info_type), sizeof(uint32_t));
+            in.seekg(dex + 0x0C);
+            in.read((char*)(&temp_wave.sample_rate), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x14);
-            sgd_file.read((char*)(&temp_wave.info_value), sizeof(uint32_t));
+            in.seekg(dex + 0x10);
+            in.read((char*)(&temp_wave.info_type), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x20);
-            sgd_file.read((char*)(&temp_wave.sample_size), sizeof(uint32_t));
+            in.seekg(dex + 0x14);
+            in.read((char*)(&temp_wave.info_value), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x24);
-            sgd_file.read((char*)(&temp_wave.loop_start), sizeof(uint32_t));
+            in.seekg(dex + 0x20);
+            in.read((char*)(&temp_wave.sample_size), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x28);
-            sgd_file.read((char*)(&temp_wave.loop_end), sizeof(uint32_t));
+            in.seekg(dex + 0x24);
+            in.read((char*)(&temp_wave.loop_start), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x2C);
-            sgd_file.read((char*)(&temp_wave.stream_size), sizeof(uint32_t));
+            in.seekg(dex + 0x28);
+            in.read((char*)(&temp_wave.loop_end), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x30);
-            sgd_file.read((char*)(&temp_wave.stream_offset), sizeof(uint32_t));
+            in.seekg(dex + 0x2C);
+            in.read((char*)(&temp_wave.stream_size), sizeof(uint32_t));
 
-            sgd_file.seekg(working_offset + 0x34);
-            sgd_file.read((char*)(&temp_wave.stream_size_full), sizeof(uint32_t));
+            in.seekg(dex + 0x30);
+            in.read((char*)(&temp_wave.stream_offset), sizeof(uint32_t));
+
+            in.seekg(dex + 0x34);
+            in.read((char*)(&temp_wave.stream_size_full), sizeof(uint32_t));
 
             wave_data.push_back(temp_wave);
         }
-
-
-        vector<bool> ignore(wave_data.size(), false);
-        int sndToIgnore = 0;
-
-        //Attempt to fix any sample size issues
-        for (int check = 0; check < wave_data.size(); ++check) {
-            if (log) cout << "Size of sample: 0x" << hex << wave_data[check].stream_size << dec << endl;
-
-            if (wave_data[check].stream_size == 0x00) {
-                if (check + 1 >= wave_data.size()) wave_data[check].stream_size = sgxd_length - wave_data[check].stream_offset;
-                else wave_data[check].stream_size = wave_data[check + 1].stream_offset - wave_data[check].stream_offset;
-            }
-
-            if (log) cout << "New size of sample: 0x" << hex << wave_data[check].stream_size << dec << endl;
-
-            //If new stream size is still 0x00, ignore it so as to fix the naming issues
-            if (wave_data[check].stream_size == 0x00) {
-                ignore[check] = true;
-                sndToIgnore += 1;
-            }
-        }
-        if (log) cout << endl;
 
 
         //Get rgnd data
@@ -397,27 +353,45 @@ int main(int argc, char *argv[]) {
         for (int r = 0; r < numrgd; ++r) {
             rgnd_def temp_rgnd;
 
-            working_offset = rgnd_data_offset + (r * 0x38);
-            if (log) cout << "Current offset: 0x" << hex << working_offset << dec << endl;
+            dex = rgnd_data_offset + (r * 0x38);
+            if (log) cout << "Current offset: 0x" << hex << dex << dec << endl;
 
-            sgd_file.seekg(working_offset + 0x00);
-            sgd_file.read((char*)(&temp_rgnd.determinator), sizeof(uint32_t));
-            if (log) cout << "Determinator: " << temp_rgnd.determinator << endl;
+            in.seekg(dex + 0x00);
+            in.read((char*)(&temp_rgnd.determinator_snd), sizeof(uint32_t));
+            //Might actually refer to output channel or something...
+            if (log) cout << "Sample Determinator: " << temp_rgnd.determinator_snd << endl;
 
-            sgd_file.seekg(working_offset + 0x18);
-            sgd_file.read((char*)(&temp_rgnd.range_low), sizeof(uint8_t));
+            in.seekg(dex + 0x0C);
+            in.read((char*)(&temp_rgnd.determinator_sfx), sizeof(uint32_t));
+            if (log) cout << "SFX Determinator: " << hex
+                          << "0x" << std::setw(2) << int(temp_rgnd.determinator_sfx & 0xFF)         << ' '
+                          << "0x" << std::setw(2) << int((temp_rgnd.determinator_sfx >> 8 ) & 0xFF) << ' '
+                          << "0x" << std::setw(2) << int((temp_rgnd.determinator_sfx >> 16) & 0xFF) << ' '
+                          << "0x" << std::setw(2) << int((temp_rgnd.determinator_sfx >> 24) & 0xFF)
+                          << dec << endl;
+
+            in.seekg(dex + 0x18);
+            in.read((char*)(&temp_rgnd.range_low), sizeof(uint8_t));
             if (log) cout << "Lowest range: " << int(temp_rgnd.range_low) << endl;
 
-            sgd_file.seekg(working_offset + 0x19);
-            sgd_file.read((char*)(&temp_rgnd.range_high), sizeof(uint8_t));
+            in.seekg(dex + 0x19);
+            in.read((char*)(&temp_rgnd.range_high), sizeof(uint8_t));
             if (log) cout << "Highest range: " << int(temp_rgnd.range_high) << endl;
 
-            sgd_file.seekg(working_offset + 0x1C);
-            sgd_file.read((char*)(&temp_rgnd.root_key), sizeof(uint8_t));
+            in.seekg(dex + 0x1C);
+            in.read((char*)(&temp_rgnd.root_key), sizeof(uint8_t));
             if (log) cout << "Root key: " << int(temp_rgnd.root_key) << endl;
 
-            sgd_file.seekg(working_offset + 0x34);
-            sgd_file.read((char*)(&temp_rgnd.sample_id), sizeof(uint32_t));
+            in.seekg(dex + 0x1D);
+            in.read((char*)(&temp_rgnd.correction), sizeof(uint8_t));
+            if (log) cout << "Fine tune: " << int(temp_rgnd.correction) << endl;
+
+            in.seekg(dex + 0x23);
+            in.read((char*)(&temp_rgnd.pan), sizeof(uint8_t));
+            if (log) cout << "Pan: " << int(temp_rgnd.pan) << endl;
+
+            in.seekg(dex + 0x34);
+            in.read((char*)(&temp_rgnd.sample_id), sizeof(uint32_t));
             if (log) cout << "Sample ID: " << temp_rgnd.sample_id << endl;
 
             rgnd_data.push_back(temp_rgnd);
@@ -427,16 +401,15 @@ int main(int argc, char *argv[]) {
 
         //Get sample data
         for (int w = 0; w < numsnd; ++w) {
-            if (ignore[w]) continue;
-
-            sgd_file.seekg(sgxd_sample_offset + wave_data[w].stream_offset);
+            in.seekg(data_offset + sgxd_offset + wave_data[w].stream_offset);
 
             for (int s = 0; s < wave_data[w].stream_size; ++s) {
-                sgd_file.get(buff);
+                in.get(buff);
                 wave_data[w].data.push_back(buff);
             }
 
             if (log) cout << "Size of raw audio: 0x" << hex << wave_data[w].data.size() << dec << endl;
+            if (wave_data[w].data.empty()) continue;
 
             //Convert sample data
             switch(wave_data[w].codec) {
@@ -462,36 +435,27 @@ int main(int argc, char *argv[]) {
                     continue;
 
                 default:
-                    vector<char> ().swap(wave_data[w].data);
+                    wave_data[w].data.clear();
                     continue;
             }
         }
         if (log) cout << endl;
 
-        sgd_file.close();
 
-        numsnd - sndToIgnore;
-
-
-        if (!(_mkdir(newDir[index].c_str()))) cout << "Created directory" << endl;
-        if (!(_chdir(newDir[index].c_str()))) cout << "Moved to directory" << endl;
+        if (!(_mkdir(newDir.c_str()))) cout << "Extract to \"" << newDir << "\"" << endl;
         cout << endl;
 
 
-        //Final name checks
-        if (sndnames.size() > numsnd) {
-            int toRemove = (sndnames.size() - numsnd) + namToIgnore;
-            sndnames.erase(sndnames.begin(), sndnames.begin() + toRemove);
-            if (log) cout << "Removed " << toRemove << " unused names from name bank" << endl;
-        }
+        //Apply names
+        for (int n = 0; n < numsnd; ++n) {
+            if (!wave_data[n].name.empty()) continue;
 
-        //Take into account that names are being ignored as well
-        while (sndnames.size() < (numsnd - namToIgnore)) {
-            string tempsndnam = bank_name + '_' + to_string(sndnames.size());
-            if (log) cout << "Added name: " << tempsndnam << endl;
-            sndnames.push_back(tempsndnam);
-        }
+            string index = "000" + std::to_string(n);
 
+            wave_data[n].name = bank_name + "_" + index.substr(index.size() - 3);
+            if (log) cout << "Sample " << n << " name: " << wave_data[n].name << endl;
+        }
+        if (log) cout << endl;
 
         for (int defs = 0; defs < numrgd; ++defs) {
             cout << endl;
@@ -501,10 +465,14 @@ int main(int argc, char *argv[]) {
                 low = rgnd_data[defs].range_low,
                 high = rgnd_data[defs].range_high,
                 used,
+                tune = rgnd_data[defs].correction,
+                pan = rgnd_data[defs].pan,
                 id = rgnd_data[defs].sample_id;
 
-            if (wave_data[id].codec != PCM16BE && wave_data[id].codec != lPADPCM && wave_data[id].codec != sPADPCM) continue;
-            else if (ignore[id]) continue;
+            if (wave_data[id].codec != PCM16BE &&
+                wave_data[id].codec != lPADPCM &&
+                wave_data[id].codec != sPADPCM) continue;
+            else if (wave_data[id].pcmle.empty()) continue;
 
             if (low == high) used = high;
             else if (low == 0x00 && high == 0x7F) used = root - 0x12;
@@ -531,8 +499,8 @@ int main(int argc, char *argv[]) {
             if (log) cout << "Old sample rate: " << sampRate << endl;
 
             //Calculate new frequency...
-            //targetFrequency = rootFrequency * (2 ^ (1/12)) ^ (targetNote - rootNote)
-            sampRate = std::round(sampRate * pow(pow(2.00, (1.00/12)), double(used - root)));
+            //targetFrequency = rootFrequency * (2 ^ (1/12)) ^ (targetNote + (rootNoteTune/100) - rootNote)
+            sampRate = std::round(sampRate * pow(pow(2.00, (1.00/12)), double(used + (tune / 100.00) - root)));
             blockAlign = channels * (bps/8);
             byteRate = sampRate * blockAlign;
 
@@ -542,12 +510,15 @@ int main(int argc, char *argv[]) {
             if (log) cout << "Channels: " << channels << endl;
 
 
-            sample_path = sndnames[id] + "_R";
-            sample_path += to_string(root) + "_K" + to_string(used) + ".wav";
+            sample_path = newDir + "/" + wave_data[id].name;
+            sample_path += "_R" + std::to_string(root);
+            sample_path += "_C" + std::to_string(tune);
+            sample_path += "_K" + std::to_string(used);
+            sample_path += (pan < 0) ? "_L" : (pan > 0) ? "_R" : "_M";
+            sample_path += ".wav";
             sample_path.erase(remove(sample_path.begin(), sample_path.end(), '\"'), sample_path.end());
 
-            ofstream wavFile(sample_path.c_str(), ios::binary);
-
+            ofstream wavFile(sample_path, ios::binary);
             if (!wavFile.is_open()) {
                 cerr << "Unable to write to " << sample_path << " . . ." << endl;
                 continue;
@@ -570,6 +541,48 @@ int main(int argc, char *argv[]) {
 
             wavFile.close();
             cout << "Successfully wrote to " << sample_path << endl;
+
+            if (!successful) successful = true;
+        }
+
+        cout << "\n\n";
+    }
+
+    return successful;
+}
+
+
+int main(int argc, char *argv[]) {
+    bool log = false;
+
+    for (int i = 1; i < argc; ++i) {
+        string source = argv[i];
+        source.erase(remove(source.begin(), source.end(), '\"'), source.end());
+
+        if (source == "-d") {
+            log = true;
+            continue;
+        }
+        else if (source[0] == '-') {
+            cerr << "Unknown option " << source << " . . ." << endl;
+            continue;
+        }
+
+
+        _chdir((source.substr(0, source.find_last_of("\\/"))).c_str());
+
+        source = source.substr(source.find_last_of("\\/") + 1);
+        if (log) cout << "Current file: " << source << endl;
+
+        ifstream sgd_file(source, ios::binary);
+        if (!sgd_file.is_open()) {
+            cerr << "Unable to open " << source << " . . ." << endl;
+            continue;
+        }
+        else if (!getSamples(sgd_file, 0x00, log)) {
+            cerr << "No sound banks found in " << source << " . . ." << endl;
         }
     }
+
+    return 0;
 }
