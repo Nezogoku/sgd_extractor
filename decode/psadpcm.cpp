@@ -9,8 +9,10 @@ using std::max;
 using std::min;
 
 
-vector<int16_t> adpcmDecode(vector<char> adpcmData) {
+std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData, uint32_t &lStart, uint32_t &lEnd, bool &looped) {
     vector<int16_t> wavData;
+
+    looped = false;
 
     double hist0 = 0.0,
            hist1 = 0.0;
@@ -58,6 +60,15 @@ vector<int16_t> adpcmDecode(vector<char> adpcmData) {
             newSample = int16_t(min(SHRT_MAX, max(int(round(sample)), SHRT_MIN)));
 
             wavData.push_back(newSample);
+
+            //Set looping points
+            if (adpcmChunk.flag == LOOP_START) {
+                looped = true;
+                lStart = wavData.size() - 1;
+            }
+            else if (adpcmChunk.flag == LOOP_END) {
+                lEnd = wavData.size() - 1;
+            }
         }
 
         delete[] samples;
