@@ -36,8 +36,9 @@ struct chunk {
 };
 
 //Code for decoding header-less PS-ADPCM files
-std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData);
+std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData, uint32_t &lStart, uint32_t &lEnd, bool &looped);
 
+//Code for decoding header-less PS-IMA_ADPCM files
 //std::vector<int16_t> sAdpcmDecode(std::vector<char> sAdpcmData);
 
 #endif
