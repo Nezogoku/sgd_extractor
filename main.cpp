@@ -36,10 +36,43 @@ using std::vector;
 #define sPADPCM 0x05
 #define PS3_AC3 0x06
 
-#define RIFF    "RIFF"
-#define rWAVE   "WAVE"
-#define fmt_    "fmt "
-#define DATA    "data"
+
+struct wave_header {
+    char riff[4] {'R','I','F','F'};
+    uint32_t file_size;
+    char wave[4] {'W','A','V','E'};
+
+    char fmt_[4] {'f','m','t',' '};
+    uint32_t fmt_size = 0x10;
+    uint16_t fmt_codec = 0x01;
+    uint16_t fmt_channels;
+    uint32_t fmt_samplerate;
+    uint32_t fmt_byterate;
+    uint16_t fmt_blockalign;
+    uint16_t fmt_bps = 0x10;
+
+    char smpl[4] {'s','m','p','l'};
+    uint32_t smpl_size = 0x24;
+    uint32_t smpl_manufacturer = 0x00;
+    uint32_t smpl_product = 0x00;
+    uint32_t smpl_period;
+    uint32_t smpl_key = 0x3C;
+    uint32_t smpl_tune = 0x00;
+    uint32_t smpl_smpte_format = 0x00;
+    uint32_t smpl_smpte_offset = 0x00;
+    uint32_t smpl_amount_loops = 0x00;
+    uint32_t smpl_amount_extra = 0x00;
+
+    uint32_t smpl_loop_id = 0x00;
+    uint32_t smpl_loop_type = 0x00;
+    uint32_t smpl_loop_start;
+    uint32_t smpl_loop_end;
+    uint32_t smpl_loop_resolution = 0x00;
+    uint32_t smpl_loop_number = 0x00;
+
+    char data[4] {'d','a','t','a'};
+    uint32_t data_size;
+};
 
 
 struct rgnd_def {
@@ -65,16 +98,18 @@ struct wave_def {
     uint32_t sample_rate;
     uint32_t info_type;
     uint32_t info_value;
+    uint32_t sample_loopstart;
+    uint32_t sample_loopend;
     uint32_t sample_size;
-    uint32_t loop_start;
-    uint32_t loop_end;
     uint32_t stream_size;
     uint32_t stream_offset;
     uint32_t stream_size_full;
 
+    bool is_looped;
     vector<char> data;
-    vector<int16_t> pcmle;
+
     string name;
+    vector<int16_t> pcmle;
 };
 
 struct name_def {
@@ -93,6 +128,18 @@ void setReverse(uint32_t &tmpInt) {
         if (b != 3) buffer <<= 8;
     }
     tmpInt = buffer;
+}
+
+void fractToHex(double tune, uint32_t &hex_tune) {
+    while (tune != 0x00) {
+        int buffer = std::floor(tune);
+
+        hex_tune |= buffer;
+        hex_tune <<= 0x04;
+
+        tune -= buffer;
+        tune *= 0x10;
+    }
 }
 
 bool findSGXD(ifstream &in, int &dex) {
@@ -329,12 +376,6 @@ bool getSamples(ifstream &in, int dex, bool log) {
             in.seekg(dex + 0x20);
             in.read((char*)(&temp_wave.sample_size), sizeof(uint32_t));
 
-            in.seekg(dex + 0x24);
-            in.read((char*)(&temp_wave.loop_start), sizeof(uint32_t));
-
-            in.seekg(dex + 0x28);
-            in.read((char*)(&temp_wave.loop_end), sizeof(uint32_t));
-
             in.seekg(dex + 0x2C);
             in.read((char*)(&temp_wave.stream_size), sizeof(uint32_t));
 
@@ -415,23 +456,32 @@ bool getSamples(ifstream &in, int dex, bool log) {
             switch(wave_data[w].codec) {
                 case PCM16BE:
                     wave_data[w].pcmle = convertPcmBE(wave_data[w].data);
-                    if (log) cout << "Size of new file after BE to LE conversion: 0x" << hex << wave_data[w].pcmle.size() << dec << endl;
+                    if (log) cout << "Size of new data after PCM16BE to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 case OGGVORB:
                     //wave_data[w].pcmle = oggVorbDecode(wave_data[w].data, wave_data[w].channels);
+                    //if (log) cout << "Size of new data after OGGVORBIS to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 case lPADPCM:
+                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data, wave_data[w].sample_loopstart, wave_data[w].sample_loopend, wave_data[w].is_looped);
+                    if (log) cout << "Size of new data after ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                    continue;
+
                 case sPADPCM:
-                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data);
-                    if (log) cout << "Size of new file after ADPCM conversion: 0x" << hex << wave_data[w].pcmle.size() << dec << endl;
+                    //wave_data[w].pcmle = sAdpcmDecode(wave_data[w].data);
+                    //if (log) cout << "Size of new data after IMA-ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 case ATRAC3p:
+                    //wave_data[w].pcmle = at3pDecode(wave_data[w].data);
+                    //if (log) cout << "Size of new data after AT3+ to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 case PS3_AC3:
+                    //wave_data[w].pcmle = ac3Decode(wave_data[w].data);
+                    //if (log) cout << "Size of new data after AC3 to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 default:
@@ -457,8 +507,9 @@ bool getSamples(ifstream &in, int dex, bool log) {
         }
         if (log) cout << endl;
 
+        //Write wav files
         for (int defs = 0; defs < numrgd; ++defs) {
-            cout << endl;
+            if (log) cout << endl;
             string sample_path;
 
             int root = rgnd_data[defs].root_key,
@@ -481,33 +532,48 @@ bool getSamples(ifstream &in, int dex, bool log) {
             else used = high;
 
 
-            uint32_t fSize,
-                     fmtSize = 0x10,
-                     sampRate = wave_data[id].sample_rate,
-                     byteRate,
-                     wavSize = wave_data[id].pcmle.size() * 0x02;
-            uint16_t audFmt = 0x01,
-                     channels = wave_data[id].channels,
-                     blockAlign,
-                     bps = 0x10;
+            wave_header header;
+            header.fmt_channels = wave_data[id].channels;
+            header.fmt_samplerate = wave_data[id].sample_rate;
+            header.data_size = wave_data[id].pcmle.size() * 0x02;
 
 
-            fSize = 0x20 + wavSize;
-            if (log) cout << "Final file size: " << fSize << endl;
-
-
-            if (log) cout << "Old sample rate: " << sampRate << endl;
+            if (log) cout << "Old sample rate: " << header.fmt_samplerate << endl;
 
             //Calculate new frequency...
             //targetFrequency = rootFrequency * (2 ^ (1/12)) ^ (targetNote + (rootNoteTune/100) - rootNote)
-            sampRate = std::round(sampRate * pow(pow(2.00, (1.00/12)), double(used + (tune / 100.00) - root)));
-            blockAlign = channels * (bps/8);
-            byteRate = sampRate * blockAlign;
+            header.fmt_samplerate = std::round(header.fmt_samplerate * pow(pow(2.00, (1.00/12)), double(used + (tune / 100.00) - root)));
 
-            if (log) cout << "New sample rate: " << sampRate << endl;
-            if (log) cout << "Block align: " << blockAlign << endl;
-            if (log) cout << "Byte rate: " << byteRate << endl;
-            if (log) cout << "Channels: " << channels << endl;
+            header.fmt_blockalign = header.fmt_channels * (header.fmt_bps/8);
+            header.fmt_byterate = header.fmt_samplerate * header.fmt_blockalign;
+
+            //Calculate sample period...
+            //smplPeriod = (1/rootFrequency) * 1000000000
+            header.smpl_period = (1.00/header.fmt_samplerate) * 1000000000;
+
+            //Calculate sample tuning
+            //fractToHex((tune/100.00), smplTune);
+
+            //Determine number of loops
+            if (wave_data[id].is_looped) {
+                header.smpl_amount_loops += 0x01;
+                header.smpl_loop_start = wave_data[id].sample_loopstart;
+                header.smpl_loop_end = wave_data[id].sample_loopend;
+            }
+
+            header.smpl_size += (header.smpl_amount_loops * 0x18);
+
+            if (log) cout << "New sample rate: " << header.fmt_samplerate << endl;
+            if (log) cout << "Block align: " << header.fmt_blockalign << endl;
+            if (log) cout << "Byte rate: " << header.fmt_byterate << endl;
+            if (log) cout << "Channels: " << header.fmt_channels << endl;
+            if (log) cout << "Sample period: " << header.smpl_period << endl;
+            if (log) cout << "Sample pressed key with root 60: " << header.smpl_key << endl;
+            if (log) cout << "Sample fractional semi-tuning: " << tune << "/100" << endl;
+            if (log) cout << "Is looped: " << ((wave_data[id].is_looped) ? "TRUE" : "FALSE") << endl;
+
+            header.file_size = 0x24 + header.smpl_size + header.data_size;
+            if (log) cout << "Final file size: " << header.file_size << endl;
 
 
             sample_path = newDir + "/" + wave_data[id].name;
@@ -524,25 +590,50 @@ bool getSamples(ifstream &in, int dex, bool log) {
                 continue;
             }
 
-            wavFile.write(RIFF, sizeof(uint32_t));
-            wavFile.write((const char*)(&fSize), sizeof(uint32_t));
-            wavFile.write(rWAVE, sizeof(uint32_t));
-            wavFile.write(fmt_, sizeof(uint32_t));
-            wavFile.write((const char*)(&fmtSize), sizeof(uint32_t));
-            wavFile.write((const char*)(&audFmt), sizeof(uint16_t));
-            wavFile.write((const char*)(&channels), sizeof(uint16_t));
-            wavFile.write((const char*)(&sampRate), sizeof(uint32_t));
-            wavFile.write((const char*)(&byteRate), sizeof(uint32_t));
-            wavFile.write((const char*)(&blockAlign), sizeof(uint16_t));
-            wavFile.write((const char*)(&bps), sizeof(uint16_t));
-            wavFile.write(DATA, sizeof(uint32_t));
-            wavFile.write((const char*)(&wavSize), sizeof(uint32_t));
-            wavFile.write((const char*)(wave_data[id].pcmle.data()), wavSize);
+            try {
+                wavFile.write(header.riff, sizeof(uint32_t));
+                wavFile.write((const char*)(&header.file_size), sizeof(uint32_t));
+                wavFile.write(header.wave, sizeof(uint32_t));
+                wavFile.write(header.fmt_, sizeof(uint32_t));
+                wavFile.write((const char*)(&header.fmt_size), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.fmt_codec), sizeof(uint16_t));
+                wavFile.write((const char*)(&header.fmt_channels), sizeof(uint16_t));
+                wavFile.write((const char*)(&header.fmt_samplerate), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.fmt_byterate), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.fmt_blockalign), sizeof(uint16_t));
+                wavFile.write((const char*)(&header.fmt_bps), sizeof(uint16_t));
+                wavFile.write(header.smpl, sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_size), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_manufacturer), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_product), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_period), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_key), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_tune), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_smpte_format), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_smpte_offset), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_amount_loops), sizeof(uint32_t));
+                wavFile.write((const char*)(&header.smpl_amount_extra), sizeof(uint32_t));
+                if (wave_data[id].is_looped) {
+                    wavFile.write((const char*)(&header.smpl_loop_id), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.smpl_loop_type), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.smpl_loop_start), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.smpl_loop_end), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.smpl_loop_resolution), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.smpl_loop_number), sizeof(uint32_t));
+                }
+                wavFile.write(header.data, sizeof(uint32_t));
+                wavFile.write((const char*)(&header.data_size), sizeof(uint32_t));
+                wavFile.write((const char*)(wave_data[id].pcmle.data()), header.data_size);
+
+                cout << "Successfully wrote to " << sample_path << endl;
+                if (!successful) successful = true;
+            }
+            catch (ofstream::failure &e) {
+                cerr << "Unable to write to " << sample_path << endl;
+                cerr << e.what() << endl;
+            }
 
             wavFile.close();
-            cout << "Successfully wrote to " << sample_path << endl;
-
-            if (!successful) successful = true;
         }
 
         cout << "\n\n";
