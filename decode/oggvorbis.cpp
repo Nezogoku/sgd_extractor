@@ -1,6 +1,6 @@
 #include <vector>
 #include "oggvorbis.hpp"
-#include "stb_vorbis.h"
+#include "vorbis/stb_vorbis.h"
 
 
 std::vector<int16_t> oggVorbDecode(std::vector<char> oggVorbData, int channels) {
