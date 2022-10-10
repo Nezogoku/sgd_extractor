@@ -6,11 +6,11 @@
 using std::vector;
 
 
-vector<int16_t> convertPcmBE(vector<char> pcmData) {
+std::vector<int16_t> convertPcmBE(std::vector<char> pcmData) {
     vector<int16_t> wavData;
 
     for (int i = 0; i < pcmData.size(); i += 2) {
-        int16_t sample = (((int16_t)pcmData[i + 1]) << 8) | (0x00FF & pcmData[i]);
+        int16_t sample = (((int16_t)pcmData[i + 1]) << 8) | (0xFF & pcmData[i]);
 
         //Ensure new sample is not outside int16_t value range
         int16_t newSample;
