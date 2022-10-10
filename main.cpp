@@ -31,9 +31,9 @@ using std::vector;
 
 #define PCM16BE 0x01
 #define OGGVORB 0x02
-#define lPADPCM 0x03
+#define cSADPCM 0x03
 #define ATRAC3p 0x04
-#define sPADPCM 0x05
+#define sSADPCM 0x05
 #define PS3_AC3 0x06
 
 
@@ -98,14 +98,15 @@ struct wave_def {
     uint32_t sample_rate;
     uint32_t info_type;
     uint32_t info_value;
-    uint32_t sample_loopstart;
-    uint32_t sample_loopend;
+    int32_t sample_loopstart;
+    int32_t sample_loopend;
     uint32_t sample_size;
     uint32_t stream_size;
     uint32_t stream_offset;
     uint32_t stream_size_full;
 
     bool is_looped;
+    bool is_bank;
     vector<char> data;
 
     string name;
@@ -169,7 +170,7 @@ bool getSamples(ifstream &in, int dex, bool log) {
         cout << "SGD found: " << ++counter << endl;
 
         string bank_name, newDir;
-        uint32_t chunk, numsnd, numrgd, numnam,
+        uint32_t chunk, numsnd = 0, numrgd = 0, numnam = 0,
                  sgxd_offset, rgnd_offset, seqd_offset, wave_offset, name_offset,
                  data_length, rgnd_length, seqd_length, wave_length, name_length,
                  sgxd_name_offset, data_offset,
@@ -190,7 +191,7 @@ bool getSamples(ifstream &in, int dex, bool log) {
 
         in.seekg(dex + 0x0C);
         in.read((char*)(&data_length), sizeof(uint32_t));
-        data_length -= 0x80000000;
+        data_length %= 0x80000000;
 
         dex += 0x10;
         while (in.get(buff) && dex < (sgxd_offset + data_offset + data_length)) {
@@ -268,10 +269,12 @@ bool getSamples(ifstream &in, int dex, bool log) {
             else dex += 0x04;
         }
 
+        /*
         if (!hasDefinitions) {
             cerr << "This file isn't a sound bank, so can't be parsed at the moment . . ." << endl;
             continue;
         }
+        */
         if (!hasSamples) {
             cerr << "There might be no samples in this file . . ." << endl;
             continue;
@@ -376,6 +379,12 @@ bool getSamples(ifstream &in, int dex, bool log) {
             in.seekg(dex + 0x20);
             in.read((char*)(&temp_wave.sample_size), sizeof(uint32_t));
 
+            in.seekg(dex + 0x24);
+            in.read((char*)(&temp_wave.sample_loopstart), sizeof(uint32_t));
+
+            in.seekg(dex + 0x28);
+            in.read((char*)(&temp_wave.sample_loopend), sizeof(uint32_t));
+
             in.seekg(dex + 0x2C);
             in.read((char*)(&temp_wave.stream_size), sizeof(uint32_t));
 
@@ -385,11 +394,17 @@ bool getSamples(ifstream &in, int dex, bool log) {
             in.seekg(dex + 0x34);
             in.read((char*)(&temp_wave.stream_size_full), sizeof(uint32_t));
 
+            if (temp_wave.sample_loopstart < 0 &&
+                temp_wave.sample_loopend   < 0) temp_wave.is_looped = false;
+            else temp_wave.is_looped = true;
+
+            temp_wave.is_bank = false;
+
             wave_data.push_back(temp_wave);
         }
 
 
-        //Get rgnd data
+        //Get rgnd data if exists
         vector<rgnd_def> rgnd_data;
         for (int r = 0; r < numrgd; ++r) {
             rgnd_def temp_rgnd;
@@ -435,9 +450,11 @@ bool getSamples(ifstream &in, int dex, bool log) {
             in.read((char*)(&temp_rgnd.sample_id), sizeof(uint32_t));
             if (log) cout << "Sample ID: " << temp_rgnd.sample_id << endl;
 
+            wave_data[temp_rgnd.sample_id].is_bank = true;
+
             rgnd_data.push_back(temp_rgnd);
         }
-        if (log) cout << endl;
+        if (hasDefinitions && log) cout << endl;
 
 
         //Get sample data
@@ -460,18 +477,18 @@ bool getSamples(ifstream &in, int dex, bool log) {
                     continue;
 
                 case OGGVORB:
-                    //wave_data[w].pcmle = oggVorbDecode(wave_data[w].data, wave_data[w].channels);
-                    //if (log) cout << "Size of new data after OGGVORBIS to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                    wave_data[w].pcmle = oggVorbDecode(wave_data[w].data, wave_data[w].channels);
+                    if (log) cout << "Size of new data after OGGVORBIS to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
-                case lPADPCM:
-                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data, wave_data[w].sample_loopstart, wave_data[w].sample_loopend, wave_data[w].is_looped);
-                    if (log) cout << "Size of new data after ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                case cSADPCM:
+                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data);
+                    if (log) cout << "Size of new data after PS ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
-                case sPADPCM:
-                    //wave_data[w].pcmle = sAdpcmDecode(wave_data[w].data);
-                    //if (log) cout << "Size of new data after IMA-ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                case sSADPCM:
+                    wave_data[w].pcmle = sAdpcmDecode(wave_data[w].data, wave_data[w].channels);
+                    if (log) cout << "Size of new data after short PS ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 case ATRAC3p:
@@ -508,41 +525,54 @@ bool getSamples(ifstream &in, int dex, bool log) {
         if (log) cout << endl;
 
         //Write wav files
-        for (int defs = 0; defs < numrgd; ++defs) {
+        auto iter = rgnd_data.begin();
+        for (int id = 0; id < numsnd;) {
+            if (wave_data[id].pcmle.empty()) { id += 1; continue; }
             if (log) cout << endl;
-            string sample_path;
 
-            int root = rgnd_data[defs].root_key,
-                low = rgnd_data[defs].range_low,
-                high = rgnd_data[defs].range_high,
-                used,
-                tune = rgnd_data[defs].correction,
-                pan = rgnd_data[defs].pan,
-                id = rgnd_data[defs].sample_id;
-
-            if (wave_data[id].codec != PCM16BE &&
-                wave_data[id].codec != lPADPCM &&
-                wave_data[id].codec != sPADPCM) continue;
-            else if (wave_data[id].pcmle.empty()) continue;
-
-            if (low == high) used = high;
-            else if (low == 0x00 && high == 0x7F) used = root - 0x12;
-            else if (high - low > 30 && high == 0x7F) used = low;
-            else if (high - low > 30 && low == 0x00) used = high;
-            else used = high;
-
+            string sample_path, sample_name;
 
             wave_header header;
             header.fmt_channels = wave_data[id].channels;
             header.fmt_samplerate = wave_data[id].sample_rate;
             header.data_size = wave_data[id].pcmle.size() * 0x02;
 
+            sample_name = wave_data[id].name;
 
-            if (log) cout << "Old sample rate: " << header.fmt_samplerate << endl;
+            iter = std::find_if(iter, rgnd_data.end(), [&] (rgnd_def const &r) { return r.sample_id == id; });
+            if (wave_data[id].is_bank) {
+                if (iter == rgnd_data.end()) {
+                    id += 1;
+                    iter = rgnd_data.begin();
+                    continue;
+                }
 
-            //Calculate new frequency...
-            //targetFrequency = rootFrequency * (2 ^ (1/12)) ^ (targetNote + (rootNoteTune/100) - rootNote)
-            header.fmt_samplerate = std::round(header.fmt_samplerate * pow(pow(2.00, (1.00/12)), double(used + (tune / 100.00) - root)));
+                int def = iter - rgnd_data.begin(),
+                    root = rgnd_data[def].root_key,
+                    low = rgnd_data[def].range_low,
+                    high = rgnd_data[def].range_high,
+                    tune = rgnd_data[def].correction,
+                    pan = rgnd_data[def].pan,
+                    used;
+
+                if (low == high) used = high;
+                else if (low == 0x00 && high == 0x7F) used = root - 0x12;
+                else if (high - low > 30 && high == 0x7F) used = low;
+                else if (high - low > 30 && low == 0x00) used = high;
+                else used = high;
+
+                if (log) cout << "Old sample rate: " << header.fmt_samplerate << endl;
+
+                //Calculate new frequency...
+                //targetFrequency = rootFrequency * (2 ^ (1/12)) ^ (targetNote + (rootNoteTune/100) - rootNote)
+                header.fmt_samplerate = std::round(header.fmt_samplerate * pow(pow(2.00, (1.00/12)), double(used + (tune / 100.00) - root)));
+
+
+                sample_name += "_R" + std::to_string(root);
+                sample_name += "_C" + std::to_string(tune);
+                sample_name += "_K" + std::to_string(used);
+                sample_name += (pan < 0) ? "_L" : (pan > 0) ? "_R" : "_M";
+            }
 
             header.fmt_blockalign = header.fmt_channels * (header.fmt_bps/8);
             header.fmt_byterate = header.fmt_samplerate * header.fmt_blockalign;
@@ -559,29 +589,27 @@ bool getSamples(ifstream &in, int dex, bool log) {
                 header.smpl_amount_loops += 0x01;
                 header.smpl_loop_start = wave_data[id].sample_loopstart;
                 header.smpl_loop_end = wave_data[id].sample_loopend;
+
+                if (header.smpl_loop_start < 0) header.smpl_loop_start = 0;
+                if (header.smpl_loop_end < 0) header.smpl_loop_end = header.data_size - 1;
             }
 
             header.smpl_size += (header.smpl_amount_loops * 0x18);
 
-            if (log) cout << "New sample rate: " << header.fmt_samplerate << endl;
+            if (log) cout << "Sample rate: " << header.fmt_samplerate << endl;
             if (log) cout << "Block align: " << header.fmt_blockalign << endl;
             if (log) cout << "Byte rate: " << header.fmt_byterate << endl;
             if (log) cout << "Channels: " << header.fmt_channels << endl;
             if (log) cout << "Sample period: " << header.smpl_period << endl;
             if (log) cout << "Sample pressed key with root 60: " << header.smpl_key << endl;
-            if (log) cout << "Sample fractional semi-tuning: " << tune << "/100" << endl;
+            if (log) cout << "Sample fractional semi-tuning: " << header.smpl_tune << "/100" << endl;
             if (log) cout << "Is looped: " << ((wave_data[id].is_looped) ? "TRUE" : "FALSE") << endl;
 
             header.file_size = 0x24 + header.smpl_size + header.data_size;
             if (log) cout << "Final file size: " << header.file_size << endl;
 
 
-            sample_path = newDir + "/" + wave_data[id].name;
-            sample_path += "_R" + std::to_string(root);
-            sample_path += "_C" + std::to_string(tune);
-            sample_path += "_K" + std::to_string(used);
-            sample_path += (pan < 0) ? "_L" : (pan > 0) ? "_R" : "_M";
-            sample_path += ".wav";
+            sample_path = newDir + "/" + sample_name + ".wav";
             sample_path.erase(remove(sample_path.begin(), sample_path.end(), '\"'), sample_path.end());
 
             ofstream wavFile(sample_path, ios::binary);
@@ -632,10 +660,12 @@ bool getSamples(ifstream &in, int dex, bool log) {
                 cerr << "Unable to write to " << sample_path << endl;
                 cerr << e.what() << endl;
             }
-
             wavFile.close();
-        }
 
+
+            if (iter == rgnd_data.end()) { id += 1; iter = rgnd_data.begin(); }
+            else iter += 1;
+        }
         cout << "\n\n";
     }
 
