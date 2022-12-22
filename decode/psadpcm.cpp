@@ -1,6 +1,6 @@
+#include <algorithm>
 #include <cmath>
 #include <climits>
-#include <iostream>
 #include <vector>
 #include "psadpcm.hpp"
 
@@ -10,31 +10,40 @@ using std::max;
 using std::min;
 
 
-std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData) {
+std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData, int &loop_s, int &loop_e, bool &isLooped) {
     vector<int16_t> wavData;
 
-    double hist0 = 0.0,
-           hist1 = 0.0;
+    bool isLoopStart = false;
+    bool isLoopEnd = false;
 
-    for (int i = 0; i < adpcmData.size(); ++i) {
-        char decodingCoeff;
-        decodingCoeff = adpcmData[i++];                                                     // Get decoding coefficient
+    vchunk adpcmChunk;
+    for (int i = 0; i < adpcmData.size();) {
+        char coeff = adpcmData[i++];                                                        // Get decoding coefficient
 
-        vchunk adpcmChunk;
-        adpcmChunk.shift = int8_t(decodingCoeff & 0xF);                                     // Get shift byte
-        adpcmChunk.predict = int8_t((decodingCoeff & 0xF0) >> 4);                           // Get predicting byte
+        adpcmChunk.shift = int8_t(coeff & 0xF);                                             // Get shift byte
+        adpcmChunk.predict = int8_t((coeff & 0xF0) >> 4);                                   // Get predicting byte
         adpcmChunk.flag = adpcmData[i++];                                                   // Get flag byte
+
         //Get compressed sound data
-        for (int b = i, ind = 0; b < i + SAMPLE_BYTES; ++b, ++ind) adpcmChunk.data[ind] = adpcmData[b];
-        i += SAMPLE_BYTES - 1;                                                              // Play catch up
+        for (int ind = 0, len = i + SAMPLE_BYTES; i < len; ++i, ++ind) adpcmChunk.data[ind] = adpcmData[i];
 
         if (adpcmChunk.flag == PLAYBACK_END) break;
+        else if (adpcmChunk.flag == LOOP_FIRST_BLOCK) {
+            isLoopStart = true;
+            loop_s = wavData.size();
+            if (wavData.size()) loop_s -= 1;
+        }
+        else if (adpcmChunk.flag == LOOP_LAST_BLOCK) {
+            isLoopEnd = true;
+            loop_e = wavData.size() + SAMPLE_NIBBLE;
+            if (wavData.size()) loop_e -= 1;
+        }
 
-        int16_t *samples = new int16_t[SAMPLE_NIBBLE];
+        int16_t samples[SAMPLE_NIBBLE];
 
         //Expand nibble to byte
         for (int b = 0; b < SAMPLE_BYTES; ++b) {
-            samples[b * 2] = adpcmChunk.data[b] & 0xF0;
+            samples[b * 2] = adpcmChunk.data[b] & 0x0F;
             samples[(b * 2) + 1] = (adpcmChunk.data[b] & 0xF0) >> 4;
         }
 
@@ -43,16 +52,16 @@ std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData) {
             //Shift nibble to top range
             int16_t samp = samples[b] << 12;
 
-            if ((samp & 0x8000) != 0) samp = int16_t(samp | 0xFFFF0000);
+            if ((samp & 0x8000)) samp = int16_t(samp | 0xFFFF0000);
 
             double sample;
             sample = samp;
             sample = int16_t(sample) >> adpcmChunk.shift;
-            sample += hist0 * vagLut[adpcmChunk.predict][0];
-            sample += hist1 * vagLut[adpcmChunk.predict][1];
+            sample += adpcmChunk.hist[0] * vagLut[adpcmChunk.predict][0];
+            sample += adpcmChunk.hist[1] * vagLut[adpcmChunk.predict][1];
 
-            hist1 = hist0;
-            hist0 = sample;
+            adpcmChunk.hist[1] = adpcmChunk.hist[0];
+            adpcmChunk.hist[0] = sample;
 
             //Ensure new sample is not outside int16_t value range
             int16_t newSample;
@@ -60,76 +69,81 @@ std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData) {
 
             wavData.push_back(newSample);
         }
-
-        delete[] samples;
     }
 
     adpcmData.clear();
 
+    if (isLoopStart && isLoopEnd) isLooped = true;
+
     return wavData;
 }
 
-//Work in progress...
 std::vector<int16_t> sAdpcmDecode(std::vector<char> sAdpcmData, int channels) {
-    vector<vector<int16_t>> chanData;
-    chanData.resize(channels);
+    vector<vector<int16_t>> t_out(channels);
+    //int a_size = (sAdpcmData.size() /
+    int l_size = 0;
 
     vector<int16_t> wavData;
 
-    double hist0 = 0.0,
-           hist1 = 0.0;
-
     int ch = 0;
-    for (int i = 0; i < sAdpcmData.size(); ++i) {
-        char decodingCoeff;
-        decodingCoeff = sAdpcmData[i++];                                                    // Get decoding coefficient
 
-        gchunk adpcmChunk;
-        adpcmChunk.shift = int8_t(decodingCoeff & 0x0F);                                    // Get shift byte
-        adpcmChunk.predict = int8_t((decodingCoeff & 0xF0) >> 4);                           // Get predicting byte
+    gchunk adpcmChunk[channels] = {};
+    for (int i = 0; i < sAdpcmData.size();) {
+        char coeff = sAdpcmData[i++];                                                       // Get decoding coefficient
+
+        adpcmChunk[ch].shift = int8_t(coeff & 0x0F);                                        // Get shift byte
+        adpcmChunk[ch].predict = int8_t((coeff & 0xF0) >> 4);                               // Get predicting byte
+
         //Get compressed sound data
-        for (int b = i, ind = 0; b < i + SHORT_SAMPLE_BYTES; ++b, ++ind) adpcmChunk.data[ind] = sAdpcmData[b];
-        i += SHORT_SAMPLE_BYTES - 1;                                                        // Play catch up
+        for (int ind = 0, len = i + SHORT_SAMPLE_BYTES; i < len; ++i, ++ind) adpcmChunk[ch].data[ind] = sAdpcmData[i];
 
-        int16_t *samples = new int16_t[SHORT_SAMPLE_NIBBLE];
+        int16_t samples[SHORT_SAMPLE_NIBBLE] = {};
 
         //Expand nibble to byte
         for (int b = 0; b < SHORT_SAMPLE_BYTES; ++b) {
-            samples[b * 2] = adpcmChunk.data[b] & 0xF0;
-            samples[(b * 2) + 1] = (adpcmChunk.data[b] & 0xF0) >> 4;
+            samples[b * 2] = adpcmChunk[ch].data[b] & 0x0F;
+            samples[(b * 2) + 1] = (adpcmChunk[ch].data[b] & 0xF0) >> 4;
         }
 
         //Decode samples
         for (int b = 0; b < SHORT_SAMPLE_NIBBLE; ++b) {
-            double sample = 0;
-            sample = ((int16_t)(samples[b] << 12) & 0xF000);
-            if (((int16_t)sample & 0x8000) != 0) sample = ((int16_t)sample | 0xFFFF0000);
-            sample = ((int16_t)sample >> adpcmChunk.shift);
-            sample += vagLut[adpcmChunk.predict][0] * hist0;
-            sample += vagLut[adpcmChunk.predict][1] * hist1;
+            //Shift nibble to top range
+            int16_t samp = samples[b] << 12;
 
-            hist1 = hist0;
-            hist0 = sample;
+            if ((samp & 0x8000)) samp = int16_t(samp | 0xFFFF0000);
+
+            double sample;
+            sample = samp;
+            sample = int16_t(sample) >> adpcmChunk[ch].shift;
+            sample += adpcmChunk[ch].hist[0] * vagLut[adpcmChunk[ch].predict][0];
+            sample += adpcmChunk[ch].hist[1] * vagLut[adpcmChunk[ch].predict][1];
+
+            adpcmChunk[ch].hist[1] = adpcmChunk[ch].hist[0];
+            adpcmChunk[ch].hist[0] = sample;
 
             //Ensure new sample is not outside int16_t value range
             int16_t newSample;
             newSample = int16_t(min(INT16_MAX, max(int(round(sample)), INT16_MIN)));
 
-            chanData[ch++].push_back(newSample);
-            ch %= channels;
+            t_out[ch].push_back(newSample);
         }
 
-        delete[] samples;
+        //Update channel
+        ch = (ch + 1) % channels;
     }
 
+    //Match sizes of samples
+    for (auto &vect : t_out) if (vect.size() > l_size) l_size = vect.size();
+    for (auto &vect : t_out) if (vect.size() < l_size) vect.resize(l_size);
 
-    //Interleave samples per channel
-    for (int d = 0; d < chanData[0].size(); ++d) {
-        for (int c = 0; c < channels; ++c) { wavData.push_back(chanData[c][d]); }
+    for (int w = 0; w < l_size; ++w) {
+        for (int c = 0; c < channels; ++c) {
+            wavData.push_back(t_out[c][w]);
+        }
     }
 
     sAdpcmData.clear();
-    chanData.clear();
+    t_out.clear();
 
     return wavData;
 }
