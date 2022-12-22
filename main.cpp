@@ -8,7 +8,10 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include "bit_byte.hpp"
 #include "decode.hpp"
+#include "sgxd_types.hpp"
+#include "wave_types.hpp"
 
 using std::cerr;
 using std::cout;
@@ -22,126 +25,6 @@ using std::remove;
 using std::string;
 using std::vector;
 
-
-#define SGXD    0x53475844
-#define RGND    0x52474E44
-#define SEQD    0x53455144
-#define WAVE    0x57415645
-#define NAME    0x4E414D45
-
-#define PCM16BE 0x01
-#define OGGVORB 0x02
-#define cSADPCM 0x03
-#define ATRAC3p 0x04
-#define sSADPCM 0x05
-#define PS3_AC3 0x06
-
-
-struct wave_header {
-    char riff[4] {'R','I','F','F'};
-    uint32_t file_size;
-    char wave[4] {'W','A','V','E'};
-
-    char fmt_[4] {'f','m','t',' '};
-    uint32_t fmt_size = 0x10;
-    uint16_t fmt_codec = 0x01;
-    uint16_t fmt_channels;
-    uint32_t fmt_samplerate;
-    uint32_t fmt_byterate;
-    uint16_t fmt_blockalign;
-    uint16_t fmt_bps = 0x10;
-
-    char smpl[4] {'s','m','p','l'};
-    uint32_t smpl_size = 0x24;
-    uint32_t smpl_manufacturer = 0x00;
-    uint32_t smpl_product = 0x00;
-    uint32_t smpl_period;
-    uint32_t smpl_key = 0x3C;
-    uint32_t smpl_tune = 0x00;
-    uint32_t smpl_smpte_format = 0x00;
-    uint32_t smpl_smpte_offset = 0x00;
-    uint32_t smpl_amount_loops = 0x00;
-    uint32_t smpl_amount_extra = 0x00;
-
-    uint32_t smpl_loop_id = 0x00;
-    uint32_t smpl_loop_type = 0x00;
-    uint32_t smpl_loop_start;
-    uint32_t smpl_loop_end;
-    uint32_t smpl_loop_resolution = 0x00;
-    uint32_t smpl_loop_number = 0x00;
-
-    char data[4] {'d','a','t','a'};
-    uint32_t data_size;
-};
-
-
-struct rgnd_def {
-    uint32_t determinator_snd;
-    uint32_t determinator_sfx;
-    uint8_t range_low;
-    uint8_t range_high;
-    uint8_t root_key;
-    int8_t correction;
-    int8_t pan;
-    uint32_t sample_id;
-};
-
-struct seqd_def {
-    uint32_t name_offset;
-    uint8_t sequence_format;
-};
-
-struct wave_def {
-    uint32_t name_offset;
-    uint8_t codec;
-    uint8_t channels;
-    uint32_t sample_rate;
-    uint32_t info_type;
-    uint32_t info_value;
-    int32_t sample_loopstart;
-    int32_t sample_loopend;
-    uint32_t sample_size;
-    uint32_t stream_size;
-    uint32_t stream_offset;
-    uint32_t stream_size_full;
-
-    bool is_looped;
-    bool is_bank;
-    vector<char> data;
-
-    string name;
-    vector<int16_t> pcmle;
-};
-
-struct name_def {
-    uint16_t name_id;
-    uint16_t name_type;
-    uint32_t name_offset;
-
-    string name;
-};
-
-
-void setReverse(uint32_t &tmpInt) {
-    uint32_t buffer = 0x00;
-    for (int b = 0; b < 4; ++b) {
-        buffer |= uint8_t((tmpInt >> (0x00 + (8 * b))) & 0xFF);
-        if (b != 3) buffer <<= 8;
-    }
-    tmpInt = buffer;
-}
-
-void fractToHex(double tune, uint32_t &hex_tune) {
-    while (tune != 0x00) {
-        int buffer = std::floor(tune);
-
-        hex_tune |= buffer;
-        hex_tune <<= 0x04;
-
-        tune -= buffer;
-        tune *= 0x10;
-    }
-}
 
 bool findSGXD(ifstream &in, int &dex) {
     uint32_t chunk;
@@ -482,7 +365,8 @@ bool getSamples(ifstream &in, int dex, bool log) {
                     continue;
 
                 case cSADPCM:
-                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data);
+                    wave_data[w].pcmle = adpcmDecode(wave_data[w].data,
+                                                     wave_data[w].sample_loopstart, wave_data[w].sample_loopend, wave_data[w].is_looped);
                     if (log) cout << "Size of new data after PS ADPCM to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
@@ -492,13 +376,17 @@ bool getSamples(ifstream &in, int dex, bool log) {
                     continue;
 
                 case ATRAC3p:
-                    //wave_data[w].pcmle = at3pDecode(wave_data[w].data);
+                    //wave_data[w].pcmle = at3pDecode(wave_data[w].data, wave_data[w].channels, wave_data[w].sample_rate);
                     //if (log) cout << "Size of new data after AT3+ to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
-                case PS3_AC3:
-                    //wave_data[w].pcmle = ac3Decode(wave_data[w].data);
-                    //if (log) cout << "Size of new data after AC3 to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                case ATRAC3_:
+                    int b_size;
+                    //if (wave_data[w].info_type == 0x80 || wave_data[w].info_type == 0x90) b_size = wave_data[w].info_value;
+                    //else b_size = 512;
+
+                    //wave_data[w].pcmle = at3Decode(wave_data[w].data, wave_data[w].channels, b_size);
+                    //if (log) cout << "Size of new data after AT3 to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 default:
@@ -530,11 +418,68 @@ bool getSamples(ifstream &in, int dex, bool log) {
             if (wave_data[id].pcmle.empty()) { id += 1; continue; }
             if (log) cout << endl;
 
+            const uint32_t PCML_GUID[] = {0x00000001,
+                                          0x0000, 0x0010,
+                                          0x800000AA00389B71};
             string sample_path, sample_name;
 
             wave_header header;
+            header.fmt_size = 0x10;
+            header.fmt_codec = 0x01;
             header.fmt_channels = wave_data[id].channels;
             header.fmt_samplerate = wave_data[id].sample_rate;
+            header.fmt_bps = 0x10;
+            if (wave_data[id].channels > 2) {
+                header.fmt_size += 0x24;
+                header.fmt_sub_size = 0x22;
+                header.fmt_sub_bps_blockalign = header.fmt_bps;
+
+                switch(header.fmt_channels) {
+                    case 3:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_FC;
+                        break;
+
+                    case 4:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_BL | SPEAKER_BR;
+                        break;
+
+                    case 5:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_FC |
+                                              SPEAKER_BL | SPEAKER_BR;
+                        break;
+
+                    case 6:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_FC | SPEAKER_LF |
+                                              SPEAKER_BL | SPEAKER_BR;
+                        break;
+
+                    case 7:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_FC | SPEAKER_LF |
+                                              SPEAKER_BC |
+                                              SPEAKER_BL | SPEAKER_BR;
+                        break;
+
+                    case 8:
+                        header.fmt_sub_mask = SPEAKER_FL | SPEAKER_FR |
+                                              SPEAKER_FC | SPEAKER_LF |
+                                              SPEAKER_SL | SPEAKER_SR |
+                                              SPEAKER_BL | SPEAKER_BR;
+                        break;
+
+                    default:
+                        continue;
+                }
+
+                header.fmt_sub_gui[0] = 0x01;
+                header.fmt_sub_gui[1] = 0x00;
+                header.fmt_sub_gui[2] = 0x10;
+                header.fmt_sub_gui[3] = 0x800000AA00389B71;
+            }
             header.data_size = wave_data[id].pcmle.size() * 0x02;
 
             sample_name = wave_data[id].name;
@@ -604,8 +549,13 @@ bool getSamples(ifstream &in, int dex, bool log) {
             if (log) cout << "Sample pressed key with root 60: " << header.smpl_key << endl;
             if (log) cout << "Sample fractional semi-tuning: " << header.smpl_tune << "/100" << endl;
             if (log) cout << "Is looped: " << ((wave_data[id].is_looped) ? "TRUE" : "FALSE") << endl;
+            if (log && wave_data[id].is_looped) {
+                cout << "Number loops: " << header.smpl_amount_loops << endl;
+                cout << "Loop start: " << header.smpl_loop_start << endl;
+                cout << "Loop end: " << header.smpl_loop_end << endl;
+            }
 
-            header.file_size = 0x24 + header.smpl_size + header.data_size;
+            header.file_size = 0x24 + header.fmt_size + header.smpl_size + header.data_size;
             if (log) cout << "Final file size: " << header.file_size << endl;
 
 
@@ -630,6 +580,16 @@ bool getSamples(ifstream &in, int dex, bool log) {
                 wavFile.write((const char*)(&header.fmt_byterate), sizeof(uint32_t));
                 wavFile.write((const char*)(&header.fmt_blockalign), sizeof(uint16_t));
                 wavFile.write((const char*)(&header.fmt_bps), sizeof(uint16_t));
+                if (wave_data[id].channels > 2) {
+                    wavFile.write((const char*)(&header.fmt_sub_size), sizeof(uint16_t));
+                    wavFile.write((const char*)(&header.fmt_sub_bps_blockalign), sizeof(uint16_t));
+                    wavFile.write((const char*)(&header.fmt_sub_mask), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.fmt_sub_gui[0]), sizeof(uint32_t));
+                    wavFile.write((const char*)(&header.fmt_sub_gui[1]), sizeof(uint16_t));
+                    wavFile.write((const char*)(&header.fmt_sub_gui[2]), sizeof(uint16_t));
+                    wavFile.write((const char*)(&header.fmt_sub_gui[3]), sizeof(uint64_t));
+                    wavFile.write((const char*)(&header.fmt_sub_padding), 0x0C);
+                }
                 wavFile.write(header.smpl, sizeof(uint32_t));
                 wavFile.write((const char*)(&header.smpl_size), sizeof(uint32_t));
                 wavFile.write((const char*)(&header.smpl_manufacturer), sizeof(uint32_t));
