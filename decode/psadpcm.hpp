@@ -10,14 +10,14 @@
 #define SHORT_SAMPLE_NIBBLE SHORT_SAMPLE_BYTES * 2
 
 //Flags for PS-ADPCM flag byte
-enum flags {
-    NOTHING = 0,         /* Nothing*/
+enum vagFlags {
+    NOTHING = 0,         /* Nothing */
     LOOP_LAST_BLOCK = 1, /* Last block to loop */
-    LOOP_REGION = 2,     /* Loop region*/
+    LOOP_REGION = 2,     /* Loop region */
     LOOP_END = 3,        /* Ending block of the loop */
     LOOP_FIRST_BLOCK = 4,/* First block of looped data */
-    UNK = 5,             /* Ending position?*/
-    LOOP_START = 6,      /* Starting block of the loop*/
+    UNK = 5,             /* Ending position? */
+    LOOP_START = 6,      /* Starting block of the loop */
     PLAYBACK_END = 7     /* Playback ending position */
 };
 
@@ -44,23 +44,26 @@ const double vagLut[][2] = {
 
 //PS-ADPCM chunks
 struct vchunk {
+    double  hist[2] {};
     uint8_t shift;
     uint8_t predict;
     uint8_t flag;
-    uint8_t data[SAMPLE_BYTES];
+    uint8_t data[SAMPLE_BYTES] {};
 };
 
 //Short PS-ADPCM chunks
 struct gchunk {
+    double  hist[2] {};
     uint8_t shift;
     uint8_t predict;
-    uint8_t data[SHORT_SAMPLE_BYTES];
+    uint8_t data[SHORT_SAMPLE_BYTES] {};
 };
 
 //Code for decoding header-less PS-ADPCM files
-std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData);
+std::vector<int16_t> adpcmDecode(std::vector<char> adpcmData, int &loop_s, int &loop_e, bool &isLooped);
 
 //Code for decoding header-less PS-IMA_ADPCM files
 std::vector<int16_t> sAdpcmDecode(std::vector<char> sAdpcmData, int channels);
+
 
 #endif
