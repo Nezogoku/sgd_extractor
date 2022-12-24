@@ -380,13 +380,13 @@ bool getSamples(ifstream &in, int dex, bool log) {
                     //if (log) cout << "Size of new data after AT3+ to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
-                case ATRAC3_:
+                case DOLAC_3:
                     int b_size;
-                    //if (wave_data[w].info_type == 0x80 || wave_data[w].info_type == 0x90) b_size = wave_data[w].info_value;
-                    //else b_size = 512;
+                    if (wave_data[w].info_type == 0x80 || wave_data[w].info_type == 0x90) b_size = wave_data[w].info_value;
+                    else b_size = 512;
 
-                    //wave_data[w].pcmle = at3Decode(wave_data[w].data, wave_data[w].channels, b_size);
-                    //if (log) cout << "Size of new data after AT3 to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
+                    wave_data[w].pcmle = ac3Decode(wave_data[w].data, wave_data[w].channels, b_size);
+                    if (log) cout << "Size of new data after AC-3 to PCM16LE: 0x" << hex << wave_data[w].pcmle.size() * 2 << dec << endl;
                     continue;
 
                 default:
@@ -614,7 +614,7 @@ bool getSamples(ifstream &in, int dex, bool log) {
                 wavFile.write((const char*)(wave_data[id].pcmle.data()), header.data_size);
 
                 cout << "Successfully wrote to " << sample_path << endl;
-                if (!successful) successful = true;
+                successful = true;
             }
             catch (ofstream::failure &e) {
                 cerr << "Unable to write to " << sample_path << endl;
@@ -660,9 +660,7 @@ int main(int argc, char *argv[]) {
             cerr << "Unable to open " << source << " . . ." << endl;
             continue;
         }
-        else if (!getSamples(sgd_file, 0x00, log)) {
-            cerr << "No sound banks found in " << source << " . . ." << endl;
-        }
+        getSamples(sgd_file, 0x00, log);
     }
 
     return 0;
