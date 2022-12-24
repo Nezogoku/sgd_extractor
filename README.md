@@ -1,7 +1,7 @@
 # sgd_extractor
 Extracts audio from sgd files and converts them to wav files.
 
-Included stb_vorbis and liba52 libraries.
+Included stb_vorbis (decode/vorbis) and a52 (decode/ac3) libraries.
 
 Borrowed code from jmarti856 and vgmstream (decode/psadpcm) with some minor changes.
 
