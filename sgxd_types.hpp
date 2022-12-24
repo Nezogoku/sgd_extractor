@@ -17,7 +17,7 @@ enum sgxdCodec {
     cSADPCM,
     ATRAC3p,
     sSADPCM,
-    ATRAC3_
+    DOLAC_3
 };
 
 
