@@ -1,0 +1,245 @@
+RIFF HEADER, 0x08 Bytes
+    RIFF 0x00
+    Size of file - 8 0x04
+
+
+WAVE HEADER, 0x04 Bytes
+    WAVE 0x00
+
+
+FORMAT HEADER, 0x04 Bytes
+    fmt  0x00
+    Size of chunk - 8 0x04
+        16, 18, or 40
+
+FORMAT CHUNK, ~0x14 Bytes
+    Codec 0x00
+        0x0000 is Unknown
+        0x0001 is PCM Integer Little Endian
+        0x0002 is Microsoft ADPCM
+        0x0003 is IEEE Floating-Point
+        0x0005 is IBM CSVD
+        0x0006 is ITU G.711 A-Law
+        0x0007 is ITU G.711 μ-Law
+        0x0010 is OKI ADPCM
+        0x0011 is IMA/DVI ADPCM
+        0x0012 is MediaSpace ADPCM
+        0x0013 is Sierra ADPCM
+        0x0015 is DIGISTD
+        0x0016 is ITU G.723 ADPCM (DIGIFIX)
+        0x0020 is YAMAHA ADPCM
+        0x0021 is SONARC
+        0x0022 is TrueSpeech
+        0x0023 is Echo Speech1
+        0x0024 is AF36 (Audiofile)
+        0x0025 is Apix
+        0x0026 is AF10 (Audiofile)
+        0x0030 is AC2 (Dolby)
+        0x0031 is GSM 6.10
+        0x0033 is ANTEX ADPCM
+        0x0034 is VQLPC (Control Resources)
+        0x0035 is DIGIREAL
+        0x0036 is DIGIADPCM
+        0x0037 is CR10 (Control Resources)
+        0x0040 is ITU G.721 ADPCM
+        0x0050 is MPEG Layer I/II
+        0x00FF is AAC Profile
+        0x0055 is MPEG Layer III
+        0x0101 is IBM μ-LAW
+        0x0102 is IBM A-LAW
+        0x0103 is IBM ADPCM
+        0x0200 is Creative Labs ADPCM
+        0x0300 is FM TOWNS
+        0x1000 is Olivetti GSM
+        0x1001 is Olivetti ADPCM
+        0x1002 is Olivetti CELP
+        0x1003 is Olivetti SBC
+        0x1004 is Olivetti OPR
+        0x0270 is Sony Atrac3
+        0x2000 is Dolby AC3
+        0x2001 is Digital Theatre System
+        0x77A1 is TTA
+        0xFFFE is Extensible (Determined by SubFormat)
+        0xFFFF is Experimental
+    Amount channels 0x02
+    Samplerate 0x04
+    Average byterate 0x08
+        samplerate * blockalign
+    Block align 0x0C
+        channels * (bits_per_samp / 8)
+    Bits per sample 0x0E
+        Rounded up to next multiple of 8
+    Size of subformat data (Optional) 0x10
+        "0" or atleast "34"
+    
+
+SUBFORMAT DATA (Optional), ~0x22 Bytes
+    Valid bits per sample or Block align (Optional) 0x00
+        "1" to (8 * block_align / amount_channels) if valid_bps
+            If valid_bps < bps in PCM, data is left-aligned
+    Speaker position mask (Optional) 0x02
+        Makes use of 18 bits, Remaining 14 bits unused
+        bit 0  is Front Left
+        bit 1  is Front Right
+        bit 2  is Front Center
+        bit 3  is Low Frequency
+        bit 4  is Back Left
+        bit 5  is Back Right
+        bit 6  is Front Left of Center
+        bit 7  is Front Right of Center
+        bit 8  is Back Center
+        bit 9  is Side Left
+        bit 10 is Side Right
+        bit 11 is Top Center
+        bit 12 is Top Front Left
+        bit 13 is Top Front Center
+        bit 14 is Top Front Right
+        bit 15 is Top Back Left
+        bit 16 is Top Back Center
+        bit 17 is Top Back Right
+        bits 18 - 30 are unused
+        bit 31 is Reserved
+    GUID 0x06
+        0xXXXXXXXX{LE} 0xXXXX{LE} 0xXXXX{LE} 0xXXXXXXXXXXXXXXXX{BE}
+        First 2 bytes is sub-codec
+    Extra data and padding 0x3B
+
+
+SILENT CHUNK (Optional), 0x0C Bytes
+    slnt 0x00
+    Size of chunk - 8 0x04
+        Always "4"
+    Amount silent samples 0x08
+
+
+WAVE LIST CHUNK (Optional), Various Bytes
+    wavl 0x00
+    Size of chunk - 8 0x04
+    Sequence of alternating silent and data chunks
+
+
+FACT HEADER (Optional), 0x08 Bytes
+    fact 0x00
+    Size of chunk - 8 0x04
+
+FACT CHUNK (Default Optional), 0x04 Bytes
+    Amount raw samples in data chunk 0x00
+
+FACT CHUNK (Early AT3 Optional), 0x08 Bytes
+    Amount raw samples in data chunk 0x00
+    Amount samples skipped (default) 0x04
+
+FACT CHUNK (AT3 Optional), 0x0C Bytes
+    Amount raw samples in data chunk 0x00
+    Amount samples skipped (default) 0x04
+    Amount samples skipped 0x08
+    
+
+CUE HEADER (Optional), 0x0C Bytes
+    cue  0x00
+    Size of chunk - 8 0x04
+    Amount cue points 0x08
+
+CUE POINTS (Optional), 0x18 Bytes
+    Cue ID 0x00
+    Cue position 0x04
+        0 if no playlist chunk
+    Data chunk ID 0x08
+        data if in data chunk
+        slnt if in silent chunk
+    Chunk start position 0x0C
+        0 if no wave list chunk
+        Byte position of chunk containing cue if has wave list chunk
+    Block start position 0x10
+        In data or silent chunks
+        From beginning of chunk data if uncompressed PCM
+        From last byte decompression start if compressed
+    Sample start position 0x14
+        From start of block
+
+
+PLAYLIST HEADER (Optional), 0x0C Bytes
+    plst 0x00
+    Size of chunk - 8 0x04
+    Amount segments 0x08
+
+PLAYLIST SEGMENTS (Optional), 0x0C Bytes
+    Cue ID 0x00
+    Size of segment 0x04
+    Amount playable repeats 0x08
+
+
+LIST HEADER (Optional), 0x0C Bytes
+    LIST 0x00
+    Size of chunk - 8 0x04
+    List type 0x08
+
+...
+
+
+SAMPLER HEADER (Optional), 0x04 Bytes
+    smpl 0x00
+    Size of chunk - 8 0x04
+
+SAMPLER CHUNK (Optional), 0x24 Bytes
+    MMA manufacturer code 0x00
+        0 is non-manufacturer specific
+    Product code 0x04
+        0 is non-product specific
+    Period (nanoseconds per sample) 0x08
+        (1 / samplerate) * 1000000000
+    Root key 0x0C
+        Default "60"
+    Fine tune 0x10
+        Default "0"
+        In hex-fraction form (x/100)
+    SMPTE time format 0x14
+        0 is no format
+        24 is 24 frames per second
+        25 is 25 frames per second
+        29 is 30 frames per second with frame dropping
+        30 is 30 frames per second
+    SMPTE Offset 0x18
+    Amount loops 0x1C
+    Amount sampler specific data 0x20
+
+SAMPLER LOOP DATA (Optional), 0x18 Bytes
+    Loop ID 0x00
+        May be used with cue chunk
+    Loop type 0x04
+        0 is normal
+        1 is ping-pong
+        2 is backward
+        3 to 31 is reserved
+        32+ is sampler/manufacturer specific
+    Loop start 0x08
+    Loop end 0x0C
+    Loop fine tune 0x10
+    Amount playable loops 0x14
+        0 is infinite
+            infinite sustain in MIDI sampler
+
+SAMPLER SPECIFIC DATA (Optional), Various Bytes
+    Various bytes of data depending on sampler
+
+
+INSTRUMENT HEADER (Optional), 0x08 Bytes
+    inst 0x00
+    Size of chunk - 8 0x04
+        Always "7"
+
+
+INSTRUMENT CHUNK (Optional), 0x07 Bytes
+    Root key 0x00
+    Fine tune 0x01
+        -50 to 50
+    Gain (decibels) 0x02
+    Lowest note 0x03
+    Highest note 0x04
+    Lowest velocity 0x05
+    Highest velocity 0x06
+
+
+DATA HEADER, 0x08 Bytes
+    data 0x00
+    Sample size 0x04
