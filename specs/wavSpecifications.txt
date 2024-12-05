@@ -18,6 +18,7 @@ FORMAT CHUNK, ~0x14 Bytes
         0x0001 is PCM Integer Little Endian
         0x0002 is Microsoft ADPCM
         0x0003 is IEEE Floating-Point
+        0x0004 is Compaq Computer's VSELP
         0x0005 is IBM CSVD
         0x0006 is ITU G.711 A-Law
         0x0007 is ITU G.711 μ-Law
@@ -25,8 +26,12 @@ FORMAT CHUNK, ~0x14 Bytes
         0x0011 is IMA/DVI ADPCM
         0x0012 is MediaSpace ADPCM
         0x0013 is Sierra ADPCM
-        0x0015 is DIGISTD
-        0x0016 is ITU G.723 ADPCM (DIGIFIX)
+        0x0014 is ITU G.723 ADPCM
+        0x0015 is DSP Solution's DIGISTD
+        0x0016 is DSP Solution's DIGIFIX
+        0x0017 is Dialogic OKI ADPCM
+        0x0018 is MediaVision ADPCM
+        0x0019 is CU Codec
         0x0020 is YAMAHA ADPCM
         0x0021 is SONARC
         0x0022 is TrueSpeech
@@ -43,19 +48,20 @@ FORMAT CHUNK, ~0x14 Bytes
         0x0037 is CR10 (Control Resources)
         0x0040 is ITU G.721 ADPCM
         0x0050 is MPEG Layer I/II
-        0x00FF is AAC Profile
         0x0055 is MPEG Layer III
+        0x00FF is AAC Profile
         0x0101 is IBM μ-LAW
         0x0102 is IBM A-LAW
         0x0103 is IBM ADPCM
         0x0200 is Creative Labs ADPCM
+        0x0270 is Sony Atrac3
         0x0300 is FM TOWNS
         0x1000 is Olivetti GSM
         0x1001 is Olivetti ADPCM
         0x1002 is Olivetti CELP
         0x1003 is Olivetti SBC
         0x1004 is Olivetti OPR
-        0x0270 is Sony Atrac3
+        0x1500 is Soundspace Music Compression
         0x2000 is Dolby AC3
         0x2001 is Digital Theatre System
         0x77A1 is TTA
@@ -123,16 +129,16 @@ FACT HEADER (Optional), 0x08 Bytes
     Size of chunk - 8 0x04
 
 FACT CHUNK (Default Optional), 0x04 Bytes
-    Amount raw samples in data chunk 0x00
+    Amount raw samples per channel 0x00
 
 FACT CHUNK (Early AT3 Optional), 0x08 Bytes
-    Amount raw samples in data chunk 0x00
-    Amount samples skipped (default) 0x04
+    Amount raw samples per channel 0x00
+    Amount samples skipped per channel (default) 0x04
 
 FACT CHUNK (AT3 Optional), 0x0C Bytes
-    Amount raw samples in data chunk 0x00
-    Amount samples skipped (default) 0x04
-    Amount samples skipped 0x08
+    Amount raw samples per channel 0x00
+    Amount samples skipped per channel (default) 0x04
+    Amount samples skipped per channel 0x08
     
 
 CUE HEADER (Optional), 0x0C Bytes

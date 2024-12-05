@@ -1,0 +1,6 @@
+bin/
+image/
+obj/
+sgxd/*.ini
+specs/*
+sgd_extractor.*
