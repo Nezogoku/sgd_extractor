@@ -68,7 +68,7 @@ std::string extractWsur() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
     
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.wsur.flag).to_string().c_str());

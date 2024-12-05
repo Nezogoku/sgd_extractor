@@ -62,7 +62,7 @@ std::string extractName() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
 
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.name.flag).to_string().c_str());
@@ -73,14 +73,14 @@ std::string extractName() {
         set_fstr("        Sequence: %d\n", n.reqseq);
         set_fstr("        Type: ");
         switch((n.type >> 4) & 0x0F) {
-            case REQUEST_STREAM:    set_fstr("Stream\n"); break;
-            case REQUEST_NOTE:      set_fstr("Note\n"); break;
-            case REQUEST_SEQUENCE:  set_fstr("Sequence\n"); break;
-            case REQUEST_SAMPLE:    set_fstr("Sample\n"); break;
-            case REQUEST_SETUP:     set_fstr("Setup\n"); break;
-            case REQUEST_EFFECT:    set_fstr("Effect\n"); break;
-            case REQUEST_CONFIG:    set_fstr("Configuration\n"); break;
-            default:                set_fstr("Unknown\n"); break;
+            case REQUEST_STREAM:    set_fstr("STREAM\n"); break;
+            case REQUEST_NOTE:      set_fstr("NOTE\n"); break;
+            case REQUEST_SEQUENCE:  set_fstr("SEQUENCE\n"); break;
+            case REQUEST_SAMPLE:    set_fstr("SAMPLE\n"); break;
+            case REQUEST_SETUP:     set_fstr("SETUP\n"); break;
+            case REQUEST_EFFECT:    set_fstr("EFFECT\n"); break;
+            case REQUEST_CONFIG:    set_fstr("CONFIGURATION\n"); break;
+            default:                set_fstr("UNKNOWN\n"); break;
         }
         set_fstr("        Name: %s\n", (!n.name.empty()) ? n.name.c_str() : "(none)");
     }

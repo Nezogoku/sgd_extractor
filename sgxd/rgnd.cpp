@@ -356,7 +356,7 @@ std::string extractRgnd() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
 
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.rgnd.flag).to_string().c_str());
@@ -373,18 +373,19 @@ std::string extractRgnd() {
             set_fstr("            Bank Mode: %d\n", t.bnkmode);
             set_fstr("            Bank ID 2: %d\n", t.bnkid);
             set_fstr("            Effect: %d\n", t.effect);
-            set_fstr("            Note Range %d to %d\n", t.notelow, t.notehigh);
+            set_fstr("            Note Range: %d to %d\n", t.notelow, t.notehigh);
             set_fstr("            Root Note: %d\n", t.noteroot);
             set_fstr("            Note Tune: %d\n", t.notetune);
             set_fstr("            Note Pitch: %d\n", t.notepitch);
-            set_fstr("            Volume Range %d to %d\n", t.vol0, t.vol1);
+            set_fstr("            Main Volume: %d\n", t.vol0);
+            set_fstr("            Pan Volume: %d\n", t.vol1);
             set_fstr("            Dry Generator: %d\n", t.gendry);
             set_fstr("            Wet Generator: %d\n", t.genwet);
             set_fstr("            Envelope 1: %d\n", t.env0);
             set_fstr("            Envelope 2: %d\n", t.env1);
             set_fstr("            Volume: %d\n", t.vol);
             set_fstr("            Pan: %d\n", t.pan);
-            set_fstr("            Bend Range %d to %d\n", t.bendlow, t.bendhigh);
+            set_fstr("            Bend Range: %d to %d\n", t.bendlow, t.bendhigh);
             set_fstr("            Sample ID: %d\n", t.smpid);
         }
     }

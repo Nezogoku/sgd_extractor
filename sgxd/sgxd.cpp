@@ -47,7 +47,7 @@ void unpackSgxd(unsigned char *in, const unsigned length) {
 
     sgd_beg = in;
     const unsigned char *in_end = sgd_beg + length;
-    unsigned n_add, s_add, s_siz;
+    unsigned n_add, s_add, s_siz; bool s_flg;
 
     auto get_fcc = [&in, &in_end]() -> unsigned {
         unsigned out = 0;
@@ -82,6 +82,8 @@ void unpackSgxd(unsigned char *in, const unsigned length) {
     n_add = get_int();
     s_add = get_int();
     s_siz = get_int();
+    s_flg = s_siz & 0x80000000;
+    s_siz = s_siz & 0x7FFFFFFF;
 
     if (s_add > length) s_add = length;
     if (s_add + s_siz > length) s_siz = length - s_add;
@@ -95,13 +97,13 @@ void unpackSgxd(unsigned char *in, const unsigned length) {
 
     //Set stream chunk
     sgd_dat_beg = sgd_beg + s_add;
-    sgd_dat_end = sgd_dat_beg + (s_siz & 0x7FFFFFFF);
+    sgd_dat_end = sgd_dat_beg + s_siz;
 
     if (sgd_debug) {
         fprintf(stderr, "    Stream Name: %s\n", sgd_inf.file.c_str());
         fprintf(stderr, "    Stream Address: 0x%08X\n", s_add);
-        fprintf(stderr, "    Stream Size: %d\n", s_siz & 0x7FFFFFFF);
-        fprintf(stderr, "    Stream Flag: %s\n", (s_siz & 0x80000000) ? "TRUE" : "FALSE");
+        fprintf(stderr, "    Stream Size: %d\n", s_siz);
+        fprintf(stderr, "    Stream Flag: %s\n", s_flg ? "TRUE" : "FALSE");
     }
 
     //Get misc chunks

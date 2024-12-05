@@ -19,7 +19,7 @@ enum SgxdSeqdCC : unsigned char {
     SEQD_UNKNOWN0               = 0x03,
     SEQD_PSX_LOOP               = 0x63,
     SEQD_UNKNOWN1               = 0x76,
-    SEQD_UNKNOWN2,
+    SEQD_PSX_SONGEVENT,
     //PSX-style loop values
     SEQD_PSX_LOOPSTART          = 0x14,
     SEQD_PSX_LOOPEND            = 0x1E,

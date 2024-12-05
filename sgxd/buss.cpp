@@ -129,42 +129,42 @@ std::string extractBuss() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
     
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.buss.flag).to_string().c_str());
     set_fstr("Busses:\n");
     for (const auto &b : sgd_inf.buss.buss) {
         set_fstr("    Buss: %d\n", &b - sgd_inf.buss.buss.data());
-        set_fstr("    Buss Flags: %s\n", std::bitset<32>(b.flag).to_string().c_str());
-        set_fstr("    Name: %s\n", (!b.name.empty()) ? b.name.c_str() : "(none)");
-        set_fstr("    Module Unit: %d\n", b.munit);
-        set_fstr("    Units:\n");
+        set_fstr("        Buss Flags: %s\n", std::bitset<32>(b.flag).to_string().c_str());
+        set_fstr("        Name: %s\n", (!b.name.empty()) ? b.name.c_str() : "(none)");
+        set_fstr("        Module Unit: %d\n", b.munit);
+        set_fstr("        Units:\n");
         for (const auto &u : b.unit) {
-            set_fstr("        Unit %d\n", &u - b.unit.data());
-            set_fstr("            Unit Flags: %s\n", std::bitset<32>(u.flag).to_string().c_str());
-            set_fstr("            Name: %s\n", (!u.name.empty()) ? u.name.c_str() : "(none)");
+            set_fstr("            Unit %d\n", &u - b.unit.data());
+            set_fstr("                Unit Flags: %s\n", std::bitset<32>(u.flag).to_string().c_str());
+            set_fstr("                Name: %s\n", (!u.name.empty()) ? u.name.c_str() : "(none)");
         }
         set_fstr("    Effects:\n");
         for (const auto &e : b.effect) {
-            set_fstr("        Effect %d\n", &e - b.effect.data());
-            set_fstr("            Effect Flags: %s\n", std::bitset<32>(e.flag).to_string().c_str());
-            set_fstr("            Name: %s\n", (!e.name.empty()) ? e.name.c_str() : "(none)");
-            set_fstr("            Module: %s\n", (!e.module.empty()) ? e.module.c_str() : "(none)");
-            set_fstr("            Assigned:");
-            for (const auto &a : e.assign) set_fstr(" 0x%02X", a); out += "\n";
-            set_fstr("            Bus In:");
-            for (int i = 0; i < e.numin; ++i) set_fstr(" 0x%02X", e.busin[i]); out += "\n";
-            set_fstr("            Bus Out:");
-            for (int i = 0; i < e.numout; ++i) set_fstr(" 0x%02X", e.busout[i]); out += "\n";
-            set_fstr("            Gain In:");
-            for (int i = 0; i < e.numin; ++i) set_fstr(" 0x%02X", e.gainin[i]); out += "\n";
-            set_fstr("            Gain Out:");
-            for (int i = 0; i < e.numout; ++i) set_fstr(" 0x%02X", e.gainout[i]); out += "\n";
-            set_fstr("            Size: %d\n", e.preset.size());
+            set_fstr("            Effect %d\n", &e - b.effect.data());
+            set_fstr("                Effect Flags: %s\n", std::bitset<32>(e.flag).to_string().c_str());
+            set_fstr("                Name: %s\n", (!e.name.empty()) ? e.name.c_str() : "(none)");
+            set_fstr("                Module: %s\n", (!e.module.empty()) ? e.module.c_str() : "(none)");
+            set_fstr("                Assigned:");
+            for (const auto &a : e.assign) set_fstr(" %d", a); out += "\n";
+            set_fstr("                Bus In:");
+            for (int i = 0; i < e.numin; ++i) set_fstr(" %d", e.busin[i]); out += "\n";
+            set_fstr("                Bus Out:");
+            for (int i = 0; i < e.numout; ++i) set_fstr(" %d", e.busout[i]); out += "\n";
+            set_fstr("                Gain In:");
+            for (int i = 0; i < e.numin; ++i) set_fstr(" %d", e.gainin[i]); out += "\n";
+            set_fstr("                Gain Out:");
+            for (int i = 0; i < e.numout; ++i) set_fstr(" %d", e.gainout[i]); out += "\n";
+            set_fstr("                Size: %d\n", e.preset.size());
         }
-        set_fstr("    Operation: %s\n", (!b.oper.empty()) ? b.oper.c_str() : "(none)");
-        set_fstr("    Operation Parameters: %s\n", (!b.oparam.empty()) ? b.oparam.c_str() : "(none)");
+        set_fstr("        Operation: %s\n", (!b.oper.empty()) ? b.oper.c_str() : "(none)");
+        set_fstr("        Operation Parameters: %s\n", (!b.oparam.empty()) ? b.oparam.c_str() : "(none)");
     }
     
     return out;

@@ -239,7 +239,7 @@ std::string extractWave() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
 
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.wave.flag).to_string().c_str());
@@ -253,7 +253,8 @@ std::string extractWave() {
         set_fstr("        Sample Rate: %d\n", w.smprate);
         set_fstr("        Bit Rate 1: %d\n", w.rate0);
         set_fstr("        Bit Rate 2: %d\n", w.rate1);
-        set_fstr("        Left Volume %d, Right Volume %d\n", w.volleft, w.volright);
+        set_fstr("        Left Volume: %d\n", w.volleft);
+        set_fstr("        Right Volume: %d\n", w.volright);
         set_fstr("        Loop Position: %d\n", w.looppos);
         set_fstr("        Loop Samples: %d\n", w.loopsmp);
         set_fstr("        Loop Begin: %d\n", w.loopbeg);

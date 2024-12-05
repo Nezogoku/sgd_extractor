@@ -135,11 +135,11 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
                     }
                 }
 
-                //Replaces unknown psx events with text
-                if (dt[0] == SEQD_UNKNOWN2) {
+                //Replaces psx event with text
+                if (dt[0] == SEQD_PSX_SONGEVENT) {
                     md = {
                         md.getTime(), META_CUE,
-                        ("Cue_" + std::to_string(dt[1])).c_str()
+                        ("SongEvent_" + std::to_string(dt[1])).c_str()
                     };
                 }
             }
@@ -158,7 +158,7 @@ std::string extractSeqd() {
     std::string out;
     auto set_fstr = [&out]<typename... T>(const char *in, T&&... args) -> void {
         int s0 = snprintf(nullptr, 0, in, args...) + 1, s1 = out.size();
-        out.resize(s1 + s0); snprintf(out.data() + s1, s0, in, args...);
+        out.resize(s1 + s0 - 1); snprintf(out.data() + s1, s0, in, args...);
     };
 
     set_fstr("Global Flags: %s\n", std::bitset<32>(sgd_inf.seqd.flag).to_string().c_str());
@@ -183,7 +183,8 @@ std::string extractSeqd() {
                 );
             }
             else set_fstr("%d Pulses per Quarternote\n", s.div & 0x7FFF);
-            set_fstr("            Left Volume %d, Right Volume %d\n", s.volleft, s.volright);
+            set_fstr("            Left Volume: %d\n", s.volleft);
+            set_fstr("            Right Volume: %d\n", s.volright);
             set_fstr("            Sequence Size: %d\n", s.data.size());
         }
     }
