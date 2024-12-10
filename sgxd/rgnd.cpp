@@ -207,7 +207,7 @@ std::vector<unsigned char> rgndToSfbk() {
                         {GN_DRY_PAN, (((ton.vol1 + 1024) * 1000) / 2048.00) - 500}, // Dry pan
                         {GN_MODULATION_ENV_RELEASE, 1200 * log2(ton.env0 / 100.00)}, // Envelope 1
                         {GN_VOLUME_ENV_RELEASE, 1200 * log2(ton.env1 / 100.00)}, // Envelope 2
-                        {GN_INITIAL_ATTENUATION, 1440 - ((ton.vol0 * 1440) / 4096.00)}, // Initial attenuation
+                        //{GN_INITIAL_ATTENUATION, 1440 - ((ton.vol0 * 1440) / 4096.00)}, // Initial attenuation
                         {GN_PITCH_COARSE_TUNE, (ton.noteroot < 0) ? 127 + ton.noteroot : 0}, // Coarse tune
                         {GN_PITCH_FINE_TUNE, ton.notetune}, // Fine tune
                         {GN_SAMPLE_MODE, (wav.loopbeg == wav.loopend) ? SM_NO_LOOP : SM_DEPRESSION_LOOP}, // Sample mode
@@ -217,14 +217,14 @@ std::vector<unsigned char> rgndToSfbk() {
                     },
                     std::vector<modinfo>{
                         { // Channel volume
-                            MS_LINEAR | MS_BIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_CHANNEL_VOLUME_C,
-                            GN_INITIAL_ATTENUATION, (int)ton.vol,
+                            MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_CHANNEL_VOLUME_C,
+                            GN_INITIAL_ATTENUATION, ton.vol,
                             MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_GENERAL_CONTROLLER | MS_NONE,
                             MT_LINEAR
                         },
                         { // Pan
-                            MS_LINEAR | MS_BIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_PAN_C,
-                            GN_DRY_PAN, (int)ton.pan,
+                            MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_PAN_C,
+                            GN_DRY_PAN, ton.pan,
                             MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_GENERAL_CONTROLLER | MS_NONE,
                             MT_LINEAR
                         }

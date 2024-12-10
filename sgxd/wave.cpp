@@ -2,7 +2,6 @@
 #include <bitset>
 #include <cstdio>
 #include <vector>
-#define SONYPSPAUDIO_IMPLEMENTATION
 #define NEEDEDRIFFWAVE_IMPLEMENTATION
 #include "audio/audio_func.hpp"
 #include "riff/fourcc_type.hpp"
@@ -99,6 +98,7 @@ void unpackWave(unsigned char *in, const unsigned length) {
         if (sgd_debug) fprintf(stderr, "        Current waveform: %d\n", w);
 
         switch(tinf[w][0] & 0xFF) {
+#ifdef DECODEPCM_IMPLEMENTATION
             case SGXD_CODEC_PCM16LE:
             case SGXD_CODEC_PCM16BE:
                 if (sgd_debug) fprintf(stderr, "            Decode PCM\n");
@@ -107,6 +107,8 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     out.wave[w].chns, 16, 2, tinf[w][0]
                 );
                 break;
+#endif
+#ifdef DECODESONYADPCM_IMPLEMENTATION
             case SGXD_CODEC_SONY_ADPCM:
                 if (sgd_debug) fprintf(stderr, "            Decode Sony ADPCM\n");
                 out.wave[w].pcm = decodeSonyAdpcm(
@@ -114,6 +116,8 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     out.wave[w].chns
                 );
                 break;
+#endif
+#ifdef DECODESONYAT3P_IMPLEMENTATION
             case SGXD_CODEC_SONY_ATRAC3PLUS:
                 if (sgd_debug) fprintf(stderr, "            Decode Sony Atrac3+\n");
                 unpackRiff((unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1]);
@@ -127,12 +131,16 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     (!wav_inf.fact.smpinfo.empty()) ? wav_inf.fact.smpinfo[0] : 0
                 );
                 break;
+#endif
+#ifdef DECODESONYSHRTADPCM_IMPLEMENTATION
             case SGXD_CODEC_SONY_SHORT_ADPCM:
                 if (sgd_debug) fprintf(stderr, "            Decode Sony Short ADPCM\n");
                 out.wave[w].pcm = decodeSonyShrtAdpcm(
                     (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], out.wave[w].chns
                 );
                 break;
+#endif
+#ifdef DECODEDOLBYAC3_IMPLEMENTATION
             case SGXD_CODEC_DOLBY_AC_3:
                 if ((sgd_dat_beg + tinf[w][2])[0] == 0x4F &&
                     (sgd_dat_beg + tinf[w][2])[1] == 0x67 &&
@@ -146,20 +154,27 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     );
                     break;
                 }
+#endif
+#ifdef DECODEOGG_IMPLEMENTATION
             case SGXD_CODEC_OGG_VORBIS:
                 if (sgd_debug) fprintf(stderr, "            Decode Ogg-Vorbis\n");
                 out.wave[w].pcm = decodeOgg(
                     (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], out.wave[w].chns
                 );
                 break;
+#endif
             case SGXD_CODEC_UNKNOWN0:
             case SGXD_CODEC_UNKNOWN1:
             default:
                 if (sgd_debug) fprintf(stderr, "            Codec 0x%02X\n", tinf[w][0] & 0xFF);
                 break;
         }
+        
+        if (out.wave[w].loopbeg < 0) out.wave[w].loopbeg = out.wave[w].loopsmp;
+        if (out.wave[w].loopend < 0) out.wave[w].loopend = out.wave[w].loopsmp;
+        
         if (!out.wave[w].pcm.empty()) {
-            if (out.wave[w].pcm.size() < out.wave[w].loopsmp) out.wave[w].pcm.clear();
+            if (out.wave[w].pcm.size() < (out.wave[w].loopsmp * out.wave[w].chns)) out.wave[w].pcm.clear();
             else if (
                 std::all_of(
                     out.wave[w].pcm.begin(),
@@ -172,9 +187,6 @@ void unpackWave(unsigned char *in, const unsigned length) {
             out.wave[w].pcm.resize(out.wave[w].loopsmp * out.wave[w].chns);
             if (sgd_debug) fprintf(stderr, "            Audio decode successful\n");
         }
-        
-        if (out.wave[w].loopbeg < 0) out.wave[w].loopbeg = out.wave[w].loopsmp;
-        if (out.wave[w].loopend < 0) out.wave[w].loopend = out.wave[w].loopsmp;
     }
 }
 

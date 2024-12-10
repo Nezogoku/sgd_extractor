@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <string>
 #define ALLSGXD_IMPLEMENTATION
+#define SONYPSPAUDIO_IMPLEMENTATION
 #include "sgxd/sgxd_func.hpp"
 #include "printpause.hpp"
 
