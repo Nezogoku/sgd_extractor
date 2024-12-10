@@ -143,6 +143,16 @@ struct instinfo {
 
 ///Wave List Fields
 struct wavlinfo {
+    ~wavlinfo() = default;
+    wavlinfo() = default;
+    wavlinfo(const chunk c) : chnk(c) {}
+    wavlinfo(const std::vector<short> p) : pcm(p) {}
+    wavlinfo(const wavlinfo &d) = default;
+    wavlinfo(wavlinfo &&d) = default;
+
+    wavlinfo& operator=(const wavlinfo &d) = default;
+    wavlinfo& operator=(wavlinfo &&d) = default;
+    
     chunk chnk;
     std::vector<short> pcm;
 

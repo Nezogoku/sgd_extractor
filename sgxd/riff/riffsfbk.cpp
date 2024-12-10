@@ -79,70 +79,6 @@ void unpackRiffSfbk(unsigned char *in, const unsigned length,
         }
 #endif
     }
-
-    if (!sf2_inf.pdta.empty()) {
-        if (!sf2_inf.pdta.phdr.empty()) {
-            const auto &phdr = sf2_inf.pdta.phdr.back();
-            std::string name(phdr.name, phdr.name + SFBK_NAME_MAX);
-            name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-            if (
-                phdr == phdrinfo{} ||
-                name.empty() || name == "EOP" ||
-                phdr.pbagid == sf2_inf.pdta.pbag.size()
-            ) sf2_inf.pdta.phdr.pop_back();
-        }
-        if (!sf2_inf.pdta.pbag.empty()) {
-            const auto &pbag = sf2_inf.pdta.pbag.back();
-            if (
-                pbag == baginfo{} ||
-                pbag.genid == sf2_inf.pdta.pgen.size() ||
-                pbag.modid == sf2_inf.pdta.pmod.size()
-            ) sf2_inf.pdta.pbag.pop_back();
-        }
-        if (!sf2_inf.pdta.pmod.empty()) {
-            const auto &pmod = sf2_inf.pdta.pmod.back();
-            if (pmod == modinfo{}) sf2_inf.pdta.pmod.pop_back();
-        }
-        if (!sf2_inf.pdta.pgen.empty()) {
-            const auto &pgen = sf2_inf.pdta.pgen.back();
-            if (pgen == geninfo{}) sf2_inf.pdta.pgen.pop_back();
-        }
-        if (!sf2_inf.pdta.inst.empty()) {
-            const auto &inst = sf2_inf.pdta.inst.back();
-            std::string name(inst.name, inst.name + SFBK_NAME_MAX);
-            name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-            if (
-                inst == ihdrinfo{} ||
-                name.empty() || name == "EOI" ||
-                inst.ibagid == sf2_inf.pdta.ibag.size()
-            ) sf2_inf.pdta.inst.pop_back();
-        }
-        if (!sf2_inf.pdta.ibag.empty()) {
-            const auto &ibag = sf2_inf.pdta.ibag.back();
-            if (
-                ibag == baginfo{} ||
-                ibag.genid == sf2_inf.pdta.igen.size() ||
-                ibag.modid == sf2_inf.pdta.imod.size()
-            ) sf2_inf.pdta.ibag.pop_back();
-        }
-        if (!sf2_inf.pdta.imod.empty()) {
-            const auto &imod = sf2_inf.pdta.imod.back();
-            if (imod == modinfo{}) sf2_inf.pdta.imod.pop_back();
-        }
-        if (!sf2_inf.pdta.igen.empty()) {
-            const auto &igen = sf2_inf.pdta.igen.back();
-            if (igen == geninfo{}) sf2_inf.pdta.igen.pop_back();
-        }
-        if (!sf2_inf.pdta.shdr.empty()) {
-            const auto &shdr = sf2_inf.pdta.shdr.back();
-            std::string name(shdr.name, shdr.name + SFBK_NAME_MAX);
-            name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-            if (
-                shdr == shdrinfo{} ||
-                name.empty() || name == "EOS"
-            ) sf2_inf.pdta.shdr.pop_back();
-        }
-    }
 }
 
 ///Unpacks SFBK info from SFBK chunk
@@ -216,7 +152,28 @@ std::vector<unsigned char> packRiffSfbk() {
 
             info += inam;
         }
-        for (const auto &i : sf2_inf.info) info += i;
+        for (auto &i : sf2_inf.info) {
+            std::vector<unsigned char> dat;
+            std::string tmp;
+            switch(i.getFcc().getInt()) {
+                case INFO_isng:
+                case INFO_INAM:
+                case INFO_irom:
+                case INFO_ICRD:
+                case INFO_IENG:
+                case INFO_IPRD:
+                case INFO_ICOP:
+                case INFO_ICMT:
+                case INFO_ISFT:
+                    dat = i.getArr(); i.clrArr();
+                    tmp = std::string(dat.begin(), dat.end());
+                    tmp = tmp.substr(0, tmp.find_first_of('\0'));
+                    i.setZtr(tmp); if (tmp.length() % 2 == 0) i.setPad();
+                default:
+                    info += i;
+                    break;
+            }
+        }
 
         //Set list chunk
         list.setFcc(RIFF_LIST);
@@ -227,21 +184,40 @@ std::vector<unsigned char> packRiffSfbk() {
 
     //Set sample data chunk
     if (true) {
+        auto has_smpl = []() -> bool {
+            return std::find_if(
+                sf2_inf.pdta.shdr.begin(), sf2_inf.pdta.shdr.end(),
+                [](const shdrinfo &s){return s.isRam();}
+            ) != sf2_inf.pdta.shdr.end();
+        };
+        auto has_sm24 = []() -> bool {
+            return std::find_if_not(
+                sf2_inf.pdta.shdr.begin(), sf2_inf.pdta.shdr.end(),
+                [](const shdrinfo &s){return s.is24b();}
+            ) == sf2_inf.pdta.shdr.end();
+        };
+        
         chunk list, sdta;
 
         //Set sample data chunk
         sdta.setFcc(LIST_sdta);
-        if (!sf2_inf.sdta.smpl.empty()) {
+        if (has_smpl()) {
             chunk smpl;
             smpl.setFcc(SDTA_smpl);
-            for (const auto &s : sf2_inf.sdta.smpl) smpl.setInt(s, 2);
+            for (const auto &shd : sf2_inf.pdta.shdr) {
+                for (const auto &s : shd.smpdata.smpl) smpl.setInt(s, 2);
+                smpl.setPad(SFBK_SMPL_PAD * 2);
+            }
             sdta += smpl;
         }
-        if (!sf2_inf.sdta.sm24.empty()) {
+        if (has_sm24()) {
             chunk sm24;
             sm24.setFcc(SDTA_sm24);
-            sm24.setArr(sf2_inf.sdta.sm24);
-            if (sf2_inf.sdta.sm24.size() % 2) sm24.setPad();
+            for (const auto &shd : sf2_inf.pdta.shdr) {
+                sm24.setArr(shd.smpdata.sm24);
+                if (shd.smpdata.sm24.size() % 2) sm24.setPad();
+                sm24.setPad(SFBK_SMPL_PAD);
+            }
             sdta += sm24;
         }
 
@@ -254,125 +230,193 @@ std::vector<unsigned char> packRiffSfbk() {
 
     //Set preset data chunk
     if (true) {
-        const auto get_bag = [](const std::vector<baginfo> &bag, const unsigned &fcc) -> chunk {
-            chunk out;
-
-            out.setFcc(fcc);
-            for (int b = 0; b <= bag.size(); ++b) {
-                if (b == bag.size()) out.setPad(SFBK_BAG_SIZE);
-                else {
-                    out.setInt(bag[b].genid, 2);
-                    out.setInt(bag[b].modid, 2);
-                }
+        const auto get_bag = [](const std::vector<baginfo> &bags, int &g, int &m) -> std::vector<unsigned char> {
+            chunk tmp;
+            for (const auto &bg : bags) {
+                tmp.setInt(g, 2); g += bg.gens.size();
+                tmp.setInt(m, 2); m += bg.mods.size();
             }
-
-            return out;
+            return tmp.getArr();
         };
-        const auto get_mod = [](const std::vector<modinfo> &mod, const unsigned &fcc) -> chunk {
-            chunk out;
-
-            out.setFcc(fcc);
-            for (int m = 0; m <= mod.size(); ++m) {
-                if (m == mod.size()) out.setPad(SFBK_MOD_SIZE);
-                else {
-                    out.setInt(mod[m].modsrc, 2);
-                    out.setInt(mod[m].moddst, 2);
-                    out.setInt(mod[m].modamnt, 2);
-                    out.setInt(mod[m].srcamnt, 2);
-                    out.setInt(mod[m].srctrns, 2);
-                }
+        const auto get_mod = [](const std::vector<modinfo> &mods) -> std::vector<unsigned char> {
+            chunk tmp;
+            for (const auto &md : mods) {
+                tmp.setInt(md.modsrc, 2);
+                tmp.setInt(md.moddst, 2);
+                tmp.setInt(md.modamnt, 2);
+                tmp.setInt(md.srcamnt, 2);
+                tmp.setInt(md.srctrns, 2);
             }
-
-            return out;
+            return tmp.getArr();
         };
-        const auto get_gen = [](const std::vector<geninfo> &gen, const unsigned &fcc) -> chunk {
-            chunk out;
-
-            out.setFcc(fcc);
-            for (int g = 0; g <= gen.size(); ++g) {
-                if (g == gen.size()) out.setPad(SFBK_GEN_SIZE);
-                else {
-                    out.setInt(gen[g].type, 2);
-                    if (gen[g].type == GN_KEY_RANGE || gen[g].type == GN_VELOCITY_RANGE) {
-                        out.setInt((gen[g].val >> 8) & 0xFF, 1);
-                        out.setInt((gen[g].val >> 0) & 0xFF, 1);
-                    }
-                    else out.setInt(gen[g].val, 2);
+        const auto get_gen = [](const std::vector<geninfo> &gens) -> std::vector<unsigned char> {
+            chunk tmp;
+            for (const auto &gn : gens) {
+                tmp.setInt(gn.type, 2);
+                if (gn.type == GN_KEY_RANGE || gn.type == GN_VELOCITY_RANGE) {
+                    tmp.setArr({gn.val >> 8, gn.val & 0xFF});
                 }
+                else tmp.setInt(gn.val, 2);
             }
-
-            return out;
+            return tmp.getArr();
         };
 
         chunk list, pdta;
 
         //Set preset data chunk
         pdta.setFcc(LIST_pdta);
+        //Set preset headers
         if (true) {
             chunk phdr;
             phdr.setFcc(PDTA_phdr);
-            for (int p = 0; p <= sf2_inf.pdta.phdr.size(); ++p) {
+            for (int p = 0, b = 0; p <= sf2_inf.pdta.phdr.size(); ++p) {
                 if (p == sf2_inf.pdta.phdr.size()) {
                     phdr.setStr("EOP", SFBK_NAME_MAX);
-                    phdr.setPad(SFBK_PHDR_SIZE - SFBK_NAME_MAX);
+                    phdr.setPad(4);
+                    phdr.setInt(b, 2);
+                    phdr.setPad(12);
                 }
                 else {
                     const auto &phd = sf2_inf.pdta.phdr[p];
                     phdr.setStr(phd.name, SFBK_NAME_MAX);
                     phdr.setInt(phd.prstid, 2);
                     phdr.setInt(phd.bankid, 2);
-                    phdr.setInt(phd.pbagid, 2);
+                    phdr.setInt(b, 2); b += phd.pbag.size();
                     phdr.setInt(phd.library, 4);
                     phdr.setInt(phd.genre, 4);
                     phdr.setInt(phd.morph, 4);
                 }
             }
+            
             pdta += phdr;
         }
-        if (true) pdta += get_bag(sf2_inf.pdta.pbag, PDTA_pbag);
-        if (true) pdta += get_mod(sf2_inf.pdta.pmod, PDTA_pmod);
-        if (true) pdta += get_gen(sf2_inf.pdta.pgen, PDTA_pgen);
+        //Set preset zones
+        if (true) {
+            chunk pbag;
+            int g = 0, m = 0;
+
+            pbag.setFcc(PDTA_pbag);
+            for (const auto &phd : sf2_inf.pdta.phdr) {
+                pbag.setArr(get_bag(phd.pbag, g, m));
+            }
+            pbag.setInt(g, 2);
+            pbag.setInt(m, 2);
+            //pbag.setPad(SFBK_BAG_SIZE);
+            
+            pdta += pbag;
+        }
+        //Set preset modulators
+        if (true) {
+            chunk pmod;
+
+            pmod.setFcc(PDTA_pmod);
+            for (const auto &phd : sf2_inf.pdta.phdr) {
+                for (const auto &bag : phd.pbag) pmod.setArr(get_mod(bag.mods));
+            }
+            pmod.setPad(SFBK_MOD_SIZE);
+            
+            pdta += pmod;
+        }
+        //Set preset generators
+        if (true) {
+            chunk pgen;
+
+            pgen.setFcc(PDTA_pgen);
+            for (const auto &phd : sf2_inf.pdta.phdr) {
+                for (const auto &bag : phd.pbag) pgen.setArr(get_gen(bag.gens));
+            }
+            pgen.setPad(SFBK_GEN_SIZE);
+            
+            pdta += pgen;
+        }
+        //Set instrument headers
         if (true) {
             chunk inst;
+            
             inst.setFcc(PDTA_inst);
-            for (int i = 0; i <= sf2_inf.pdta.inst.size(); ++i) {
+            for (int i = 0, b = 0; i <= sf2_inf.pdta.inst.size(); ++i) {
                 if (i == sf2_inf.pdta.inst.size()) {
                     inst.setStr("EOI", SFBK_NAME_MAX);
-                    inst.setPad(SFBK_IHDR_SIZE - SFBK_NAME_MAX);
+                    inst.setInt(b, 2);
                 }
                 else {
                     const auto &ihd = sf2_inf.pdta.inst[i];
                     inst.setStr(ihd.name, SFBK_NAME_MAX);
-                    inst.setInt(ihd.ibagid, 2);
+                    inst.setInt(b, 2); b += ihd.ibag.size();
                 }
             }
+            
             pdta += inst;
         }
-        if (true) pdta += get_bag(sf2_inf.pdta.ibag, PDTA_ibag);
-        if (true) pdta += get_mod(sf2_inf.pdta.imod, PDTA_imod);
-        if (true) pdta += get_gen(sf2_inf.pdta.igen, PDTA_igen);
+        //Set instrument zones
+        if (true) {
+            chunk ibag;
+            int g = 0, m = 0;
+
+            ibag.setFcc(PDTA_ibag);
+            for (const auto &ihd : sf2_inf.pdta.inst) {
+                ibag.setArr(get_bag(ihd.ibag, g, m));
+            }
+            ibag.setInt(g, 2);
+            ibag.setInt(m, 2);
+            ibag.setPad(SFBK_BAG_SIZE);
+            
+            pdta += ibag;
+        }
+        //Set instrument modulators
+        if (true) {
+            chunk imod;
+
+            imod.setFcc(PDTA_imod);
+            for (const auto &ihd : sf2_inf.pdta.inst) {
+                for (const auto &bag : ihd.ibag) imod.setArr(get_mod(bag.mods));
+            }
+            imod.setPad(SFBK_MOD_SIZE);
+            
+            pdta += imod;
+        }
+        //Set instrument generators
+        if (true) {
+            chunk igen;
+
+            igen.setFcc(PDTA_igen);
+            for (const auto &ihd : sf2_inf.pdta.inst) {
+                for (const auto &bag : ihd.ibag) igen.setArr(get_gen(bag.gens));
+            }
+            igen.setPad(SFBK_GEN_SIZE);
+            
+            pdta += igen;
+        }
+        //Set sample headers
         if (true) {
             chunk shdr;
+            
             shdr.setFcc(PDTA_shdr);
-            for (int s = 0; s <= sf2_inf.pdta.shdr.size(); ++s) {
-                if (s == sf2_inf.pdta.shdr.size()) {
-                    shdr.setStr("EOS", SFBK_NAME_MAX);
-                    shdr.setPad(SFBK_SHDR_SIZE - SFBK_NAME_MAX);
-                }
-                else {
-                    const auto &shd = sf2_inf.pdta.shdr[s];
-                    shdr.setStr(shd.name, SFBK_NAME_MAX);
-                    shdr.setInt(shd.smpbeg, 4);
-                    shdr.setInt(shd.smpend, 4);
+            for (int s = 0, sb = 0; s < sf2_inf.pdta.shdr.size(); ++s) {
+                const auto &shd = sf2_inf.pdta.shdr[s];
+                shdr.setStr(shd.name, SFBK_NAME_MAX);
+                if (shd.isRom()) {
+                    shdr.setInt(shd.begin(), 4);
+                    shdr.setInt(shd.end(), 4);
                     shdr.setInt(shd.loopbeg, 4);
                     shdr.setInt(shd.loopend, 4);
-                    shdr.setInt(shd.smprate, 4);
-                    shdr.setInt(shd.noteroot, 1);
-                    shdr.setInt(shd.notetune, 1);
-                    shdr.setInt(shd.smplink, 2);
-                    shdr.setInt(shd.smptyp, 2);
                 }
+                else {
+                    shdr.setInt(sb + shd.begin(), 4);
+                    shdr.setInt(sb + shd.end(), 4);
+                    shdr.setInt(sb + shd.loopbeg, 4);
+                    shdr.setInt(sb + shd.loopend, 4);
+                    sb += shd.size() + SFBK_SMPL_PAD;
+                }
+                shdr.setInt(shd.smprate, 4);
+                shdr.setInt(shd.noteroot, 1);
+                shdr.setInt(shd.notetune, 1);
+                shdr.setInt(shd.smplink, 2);
+                shdr.setInt(shd.smptyp, 2);
             }
+            shdr.setStr("EOS", SFBK_NAME_MAX);
+            shdr.setPad(SFBK_SHDR_SIZE - SFBK_NAME_MAX);
+            
             pdta += shdr;
         }
 

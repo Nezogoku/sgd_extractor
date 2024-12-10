@@ -15,7 +15,9 @@
 
 #ifdef DECODESONYADPCM_IMPLEMENTATION
 std::vector<short> decodeSonyAdpcm(
-    unsigned char *in, const unsigned length
+    unsigned char *in, const unsigned length,
+    const unsigned short chns = 1,
+    signed *loop_b = 0, signed *loop_e = 0
 );
 #endif
 

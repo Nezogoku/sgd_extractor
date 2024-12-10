@@ -8,15 +8,12 @@
 std::vector<short> decodeDolbyAc3(unsigned char *in, const unsigned length, unsigned short align,
                                   const unsigned short chns) {
     if (!in || length < 7) return {};
-    if (in[0] == 0x4F &&
-        in[1] == 0x67 &&
-        in[2] == 0x67 &&
-        in[3] == 0x53) return {};
     
     const unsigned char *in_end = in + length;
     const unsigned short A52_FRAME_BLOCKS = 6;
     const unsigned short A52_FRAME_BLOCK_SAMPLES = 256;
     const unsigned short A52_FRAME_BLOCK_FULL = A52_FRAME_BLOCK_SAMPLES * chns;
+    unsigned char in_buf[align] {};
     a52_state_s *t_st = a52_init(0);
     std::vector<short> out;
     
@@ -24,11 +21,9 @@ std::vector<short> decodeDolbyAc3(unsigned char *in, const unsigned length, unsi
     while (in < in_end) {
         int flgs = 0, c_fl = 0, s_rt = 0, b_rt = 0;
         sample_t lev = 1.0, bias = 0.0;
-        unsigned char in_buf[align] {};
         
         for (int i = 0; i < align; ++i) {
-            if (in + i >= in_end) break;
-            in_buf[i] = in[i];
+            in_buf[i] = (in + i < in_end) ? in[i] : 0;
         }
         
         if (!a52_syncinfo(in_buf, &flgs, &s_rt, &b_rt)) { in += 1; continue; }

@@ -311,16 +311,20 @@ void extractSgxd(const char *folder) {
 
                 if (!sq.name.empty()) nam = sq.name;
                 else {
-                    nam.resize(snprintf(nullptr, 0, "seq_%03d_%03d", g, s) + 1);
-                    snprintf(nam.data(), nam.size(), "seq_%03d_%03d", g, s);
+                    nam.resize(snprintf(nullptr, 0, "seq_%03d_%03d", g, s));
+                    snprintf(nam.data(), nam.size() + 1, "seq_%03d_%03d", g, s);
                 }
-                ext = (sq.fmt == SEQD_REQUEST) ? ".req" : (sq.fmt == SEQD_RAWMIDI) ? ".mid" : ".unk";
+                ext = (sq.fmt > SEQD_RAWMIDI) ? ".unk" : ".mid";
                 nam = "/" + nam + ext;
 
                 if (createFile((out + tmp + nam).c_str(), (unsigned char*)seq.data(), seq.size())) {
                     fprintf(stdout, "        Extracted %s\n", nam.c_str());
                 }
                 else fprintf(stderr, "        Unable to extract %s\n", nam.c_str());
+                
+                if (!sgd_req.empty() && createFile((out + tmp + nam + ".req").c_str(), sgd_req.c_str(), sgd_req.size())) {
+                    fprintf(stdout, "        Extracted %s.req\n", nam.c_str());
+                }
             }
         }
 
@@ -351,8 +355,8 @@ void extractSgxd(const char *folder) {
 
             if (!sgd_inf.wave.wave[w].name.empty()) nam = sgd_inf.wave.wave[w].name;
             else {
-                nam.resize(snprintf(nullptr, 0, "smpl_%03d", w) + 1);
-                snprintf(nam.data(), nam.size(), "smpl_%03d", w);
+                nam.resize(snprintf(nullptr, 0, "smpl_%03d", w));
+                snprintf(nam.data(), nam.size() + 1, "smpl_%03d", w);
             }
             nam = "/" + nam + ".wav";
 
@@ -409,8 +413,8 @@ void extractSgxd(const char *folder) {
 
             if (!cnf.name.empty()) nam = cnf.name;
             else {
-                nam.resize(snprintf(nullptr, 0, "conf_%03d", c) + 1);
-                snprintf(nam.data(), nam.size(), "conf_%03d", c);
+                nam.resize(snprintf(nullptr, 0, "conf_%03d", c));
+                snprintf(nam.data(), nam.size() + 1, "conf_%03d", c);
             }
             nam = "/" + nam + ".txt";
 

@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <bitset>
 #include <cstdio>
-#include <ctime>
+#include <cmath>
 #include <string>
 #include <vector>
 #include "riff/riff_forms.hpp"
@@ -9,6 +9,7 @@
 #include "riff/riffsfbk_const.hpp"
 #include "riff/riffsfbk_types.hpp"
 #include "riff/riffsfbk_func.hpp"
+#include "midi/midi_const.hpp"
 #include "sgxd_types.hpp"
 #include "sgxd_func.hpp"
 
@@ -128,222 +129,122 @@ std::vector<unsigned char> rgndToSfbk() {
         sgd_inf.rgnd.empty() ||
         sgd_inf.wave.empty()
     ) return {};
+    
+    struct prst { unsigned short bid, pid; std::vector<baginfo> zon; };
+    std::vector<prst> prsts;
 
-    auto get_crd = []() -> std::string {
-        time_t t_tm;
-        struct tm *t_dt;
-        std::string out;
-        out.resize(20);
-
-        //Get current time in "Month Day, Year" format
-        std::time(&t_tm);
-        t_dt = std::localtime(&t_tm);
-        std::strftime(out.data(), 20, "%B %e, %Y", t_dt);
-
-        return out;
-    };
     auto set_nam = []<typename... T>(char *out, const int length, const char *in, T&&... args) -> void {
         snprintf(out, length + 1, in, args...);
     };
-    std::string sft = "";
-    sft += PROGRAMME_IDENTIFIER;
-    sft += ":";
-    sft += PROGRAMME_IDENTIFIER;
+    auto get_prs = [&prsts](unsigned short bid, unsigned short pid) -> std::vector<prst>::iterator {
+        auto itr = prsts.begin();
+        itr = std::find_if(itr, prsts.end(), [&bid, &pid](const prst &p) { return p.bid == bid && p.pid == pid; });
+        if (itr >= prsts.end()) { prsts.emplace_back(bid, pid); itr = prsts.end() - 1; }
+        return itr;
+    };
 
     if (sgd_debug) fprintf(stderr, "        Set info to soundbank\n");
+    
     //Version Level
     if (sgd_debug) fprintf(stderr, "            Set version\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_ifil);
-    sf2_inf.info.back().setInt(0x02, 2);
-    sf2_inf.info.back().setInt(0x04, 2);
+    sf2_inf.setIfil(2, 4);
+    
     //Sound Engine
     if (sgd_debug) fprintf(stderr, "            Set sound engine\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_isng);
-    sf2_inf.info.back().setZtr("EMU8000");
+    sf2_inf.setIsng("EMU8000");
+    
     //Title
     if (sgd_debug) fprintf(stderr, "            Set title\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_INAM);
-    sf2_inf.info.back().setZtr(sgd_inf.file);
-    //ROM Name
-    if (sgd_debug) fprintf(stderr, "            Set ROM name\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_irom);
-    sf2_inf.info.back().setZtr("1MGM");
-    //ROM Version Level
-    if (sgd_debug) fprintf(stderr, "            Set ROM version\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_iver);
-    sf2_inf.info.back().setInt(0x06, 2);
-    sf2_inf.info.back().setInt(0x00, 2);
-    //Creation Date
-    if (sgd_debug) fprintf(stderr, "            Set creation date\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_ICRD);
-    sf2_inf.info.back().setZtr(get_crd());
+    sf2_inf.setInam(sgd_inf.file.c_str());
+    
     //Software Package
     if (sgd_debug) fprintf(stderr, "            Set software\n");
-    sf2_inf.info.emplace_back();
-    sf2_inf.info.back().setFcc(INFO_ISFT);
-    sf2_inf.info.back().setZtr(sft);
+    sf2_inf.setIsft(PROGRAMME_IDENTIFIER);
 
     if (sgd_debug) fprintf(stderr, "        Set samples to soundbank\n");
     const int siz = sgd_inf.wave.wave.size();
-    for (int w = 0; w <= siz; ++w) {
-        const auto &wav = sgd_inf.wave.wave[w % siz];
-        if (w != siz && wav.chns != 1) continue;
-
-        auto &smp = sf2_inf.sdta.smpl;
+    for (int w = 0; w < siz; ++w) {
+        const auto &wav = sgd_inf.wave.wave[w];
+        const auto &pcm = (wav.chns != 1) ? std::vector<short>{} : wav.pcm;
+        const auto &lpb = (pcm.empty()) ? 0 : wav.loopbeg;
+        const auto &lpe = (pcm.empty()) ? 0 : wav.loopend;
         char nam[SFBK_NAME_MAX + 1] {};
-
-        if (sgd_debug) fprintf(stderr, "            Set sample %d header\n", w);
-        if (w == siz) set_nam(nam, SFBK_NAME_MAX, "triangle");
+        
+        if (sgd_debug) fprintf(stderr, "            Set sample %d and header\n", w);
+        if (wav.chns != 1) set_nam(nam, SFBK_NAME_MAX, "empt_%03d", w);
         else if (!wav.name.empty()) set_nam(nam, SFBK_NAME_MAX, wav.name.c_str());
         else set_nam(nam, SFBK_NAME_MAX, "smpl_%03d", w);
-        sf2_inf.pdta.shdr.emplace_back(
-            nam,
-            (w == siz) ? 428157 : smp.size(),
-            (w == siz) ? 430225 : smp.size() + wav.pcm.size(),
-            (w == siz) ? 428493 : (smp.size() + (wav.loopbeg < 0) ? wav.loopsmp : wav.loopbeg),
-            (w == siz) ? 430221 : (smp.size() + (wav.loopend < 0) ? wav.loopsmp : wav.loopend),
-            (w == siz) ? 44100  : wav.smprate,
-            60, 0, 0, (w != siz) ? ST_RAM_MONO : ST_ROM_MONO
-        );
-
-        if (sgd_debug) fprintf(stderr, "            Set sample %d\n", w);
-        if (w != siz) smp.insert(smp.end(), wav.pcm.begin(), wav.pcm.end());
-        smp.resize(smp.size() + SFBK_SMPL_PAD, 0);
+        
+        sf2_inf.setShdr(nam, pcm, lpb, lpe, wav.smprate, 60, 0, 0, ST_RAM_MONO);
     }
 
-    if (sgd_debug) fprintf(stderr, "        Set instruments to soundbank\n");
-    for (int r = 0, i = 0; r < sgd_inf.rgnd.rgnd.size(); ++r) {
-        const auto &rgn = sgd_inf.rgnd.rgnd[r];
-        if (rgn.empty()) continue;
+    if (sgd_debug) fprintf(stderr, "        Set instruments and presets to soundbank\n");
+    for (const auto &rgn : sgd_inf.rgnd.rgnd) {
+        
+        //new_val = (((old_val - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
 
-        for (int t = 0; t < rgn.size(); ++t) {
-            const auto &ton = sgd_inf.rgnd.rgnd[r][t];
-            const auto &wav = sgd_inf.wave.wave;
-
-            char nam[SFBK_NAME_MAX + 1] {};
-
-            if (sgd_debug) fprintf(stderr, "            Set instrument %d header\n", i + t);
-            if (!ton.name.empty()) set_nam(nam, SFBK_NAME_MAX, ton.name.c_str());
-            else set_nam(nam, SFBK_NAME_MAX, "inst_%03d", i + t);
-            sf2_inf.pdta.inst.emplace_back(nam, sf2_inf.pdta.ibag.size());
-
-            if (sgd_debug) fprintf(stderr, "            Set instrument %d zone\n", i + t);
-            sf2_inf.pdta.ibag.emplace_back(
-                sf2_inf.pdta.igen.size(), sf2_inf.pdta.imod.size()
-            );
-
-            if (sgd_debug) fprintf(stderr, "            Set instrument %d generators\n", i + t);
-            //Key range
-            sf2_inf.pdta.igen.emplace_back(
-                GN_KEY_RANGE, ton.notelow, ton.notehigh
-            );
-            //Pitch
-            sf2_inf.pdta.igen.emplace_back(
-                GN_MODULATION_ENV_FINE_PITCH, ton.notepitch
-            );
-            //Chorus if applicable
-            if (ton.effect) sf2_inf.pdta.igen.emplace_back(
-                GN_CHORUS_EFFECTS_SEND, ton.effect
-            );
-            //Reverb
-            sf2_inf.pdta.igen.emplace_back(
-                GN_REVERB_EFFECTS_SEND, (ton.genwet - ton.gendry) * 4096 / 1000.00
-            );
-            //Dry pan
-            sf2_inf.pdta.igen.emplace_back(
-                GN_DRY_PAN, ton.vol1 * 500 / 1024.00
-            );
-            //Envelope 1
-            sf2_inf.pdta.igen.emplace_back(
-                GN_VOLUME_ENV_ATTACK, ton.env0
-            );
-            //Envelope 2
-            sf2_inf.pdta.igen.emplace_back(
-                GN_VOLUME_ENV_HOLD, ton.env1
-            );
-            //Initial attenuation if applicable
-            if (ton.vol0 != 4096) sf2_inf.pdta.igen.emplace_back(
-                GN_INITIAL_ATTENUATION, (4096 - ton.vol0) * 1440 / 4096.00
-            );
-            //Coarse tune if applicable
-            if (ton.noteroot < 0) sf2_inf.pdta.igen.emplace_back(
-                GN_PITCH_COARSE_TUNE, ton.noteroot * -1
-            );
-            //Fine tune if applicable
-            if (ton.notetune) sf2_inf.pdta.igen.emplace_back(
-                GN_PITCH_FINE_TUNE, ton.notetune
-            );
-            //Sample mode
-            sf2_inf.pdta.igen.emplace_back(
-                GN_SAMPLE_MODE,
-                (ton.smpid >= 0 && ton.smpid < siz) ? (
-                    (wav[ton.smpid].loopbeg < 0 && wav[ton.smpid].loopbeg < 0) ? SM_NO_LOOP :
-                    (wav[ton.smpid].loopbeg < 0) ? SM_DEPRESSION_LOOP : SM_CONTINUOUS_LOOP
-                ) : SM_DEPRESSION_LOOP
-            );
-            //Exclusive class if applicable
-            if (ton.excl) sf2_inf.pdta.igen.emplace_back(
-                GN_SAMPLE_EXCLUSIVE_CLASS, ton.excl
-            );
-            //Root key
-            sf2_inf.pdta.igen.emplace_back(
-                GN_SAMPLE_OVERRIDE_ROOT,
-                (ton.noteroot < 0) ? 127 : ton.noteroot
-            );
-            //Sample ID
-            sf2_inf.pdta.igen.emplace_back(
-                GN_SAMPLE_ID,
-                (ton.smpid < 0) ? siz - 1 : ton.smpid
-            );
-
-            if (sgd_debug) fprintf(stderr, "            Set instrument %d modulators\n", i + t);
-        }
-
-        i += rgn.size();
-    }
-
-    if (sgd_debug) fprintf(stderr, "        Set presets to soundbank\n");
-    for (int r = 0, i = 0; r < sgd_inf.rgnd.rgnd.size(); ++r) {
-        const auto &rgn = sgd_inf.rgnd.rgnd[r];
-        std::vector<unsigned char> bnk;
-        if (rgn.empty()) continue;
-
+        prsts.clear();
         for (const auto &ton : rgn) {
-            if (std::find(bnk.begin(), bnk.end(), ton.bnkid) != bnk.end()) continue;
-            else bnk.push_back(ton.bnkid);
-        }
-        std::sort(bnk.begin(), bnk.end());
+            const auto &wav = sgd_inf.wave.wave[ton.smpid];
+            const int i = sf2_inf.getInum();
+            auto itr = get_prs(ton.bnkid, &rgn - sgd_inf.rgnd.rgnd.data());
+            std::vector<geninfo> tgn;
+            std::vector<modinfo> tmd;
 
-        for (int b = 0; b < bnk.size(); ++b) {
             char nam[SFBK_NAME_MAX + 1] {};
 
-            if (sgd_debug) fprintf(stderr, "            Set bank %d preset %d header\n", b, r);
-            set_nam(nam, SFBK_NAME_MAX, "prst_%03d_%04d", b, r);
-            sf2_inf.pdta.phdr.emplace_back(nam, r, b, sf2_inf.pdta.pbag.size());
-
-            if (sgd_debug) fprintf(stderr, "            Set bank %d preset %d zone\n", b, r);
-            sf2_inf.pdta.pbag.emplace_back(
-                sf2_inf.pdta.pgen.size(), sf2_inf.pdta.pmod.size()
+            if (sgd_debug) fprintf(stderr, "            Set instrument %d header and zones\n", i);
+            if (!ton.name.empty()) set_nam(nam, SFBK_NAME_MAX, ton.name.c_str());
+            else set_nam(nam, SFBK_NAME_MAX, "inst_%03d", i);
+            
+            sf2_inf.setInst(
+                nam, std::vector<baginfo>{{
+                    std::vector<geninfo>{
+                        {GN_KEY_RANGE, ton.notelow, ton.notehigh}, // Key range
+                        //{GN_MODULATION_ENV_FINE_PITCH, ton.notepitch}, // Pitch
+                        {GN_CHORUS_EFFECTS_SEND, ton.effect}, // Chorus
+                        {GN_REVERB_EFFECTS_SEND, ((ton.genwet - ton.gendry) * 1000) / 4096.00}, // Reverb
+                        {GN_DRY_PAN, (((ton.vol1 + 1024) * 1000) / 2048.00) - 500}, // Dry pan
+                        {GN_MODULATION_ENV_RELEASE, 1200 * log2(ton.env0 / 100.00)}, // Envelope 1
+                        {GN_VOLUME_ENV_RELEASE, 1200 * log2(ton.env1 / 100.00)}, // Envelope 2
+                        {GN_INITIAL_ATTENUATION, 1440 - ((ton.vol0 * 1440) / 4096.00)}, // Initial attenuation
+                        {GN_PITCH_COARSE_TUNE, (ton.noteroot < 0) ? 127 + ton.noteroot : 0}, // Coarse tune
+                        {GN_PITCH_FINE_TUNE, ton.notetune}, // Fine tune
+                        {GN_SAMPLE_MODE, (wav.loopbeg == wav.loopend) ? SM_NO_LOOP : SM_DEPRESSION_LOOP}, // Sample mode
+                        {GN_SAMPLE_EXCLUSIVE_CLASS, ton.excl}, // Exclusive class
+                        {GN_SAMPLE_OVERRIDE_ROOT, (ton.noteroot < 0) ? 127 : ton.noteroot}, // Root key
+                        {GN_SAMPLE_ID, (ton.smpid < 0) ? ton.noteroot : ton.smpid}, // Sample ID
+                    },
+                    std::vector<modinfo>{
+                        { // Channel volume
+                            MS_LINEAR | MS_BIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_CHANNEL_VOLUME_C,
+                            GN_INITIAL_ATTENUATION, (int)ton.vol,
+                            MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_GENERAL_CONTROLLER | MS_NONE,
+                            MT_LINEAR
+                        },
+                        { // Pan
+                            MS_LINEAR | MS_BIPOLAR | MS_INCREASE | MS_MIDI_CONTROLLER | CC_PAN_C,
+                            GN_DRY_PAN, (int)ton.pan,
+                            MS_LINEAR | MS_UNIPOLAR | MS_INCREASE | MS_GENERAL_CONTROLLER | MS_NONE,
+                            MT_LINEAR
+                        }
+                    }
+                }}
             );
 
-            if (sgd_debug) fprintf(stderr, "            Set bank %d preset %d generators\n", b, r);
-            for (int t = 0; t < rgn.size(); ++t) {
-                if (rgn[t].bnkid != b) continue;
-
-                //Instrument ID
-                sf2_inf.pdta.igen.emplace_back(GN_INSTRUMENT_ID, i + t);
-            }
-
-            if (sgd_debug) fprintf(stderr, "            Set bank %d preset %d modulators\n", b, r);
+            itr[0].zon.emplace_back();
+            itr[0].zon.back().gens.emplace_back(GN_KEY_RANGE, ton.notelow, ton.notehigh);
+            itr[0].zon.back().gens.emplace_back(GN_INSTRUMENT_ID, i);
         }
-
-        i += rgn.size();
+        
+        for (auto &p : prsts) {
+            char nam[SFBK_NAME_MAX + 1] {};
+            
+            if (sgd_debug) fprintf(stderr, "            Set bank %d preset %d header and zones\n", p.bid, p.pid);
+            set_nam(nam, SFBK_NAME_MAX, "prst_%03d_%04d", p.bid, p.pid);
+            
+            sf2_inf.setPhdr(nam, p.pid, p.bid, p.zon);
+        }
     }
 
     return packRiffSfbk();
@@ -374,7 +275,7 @@ std::string extractRgnd() {
             set_fstr("            Bank ID 2: %d\n", t.bnkid);
             set_fstr("            Effect: %d\n", t.effect);
             set_fstr("            Note Range: %d to %d\n", t.notelow, t.notehigh);
-            set_fstr("            Root Note: %d\n", t.noteroot);
+            set_fstr("            Note Root: %d\n", t.noteroot);
             set_fstr("            Note Tune: %d\n", t.notetune);
             set_fstr("            Note Pitch: %d\n", t.notepitch);
             set_fstr("            Main Volume: %d\n", t.vol0);

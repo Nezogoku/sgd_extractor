@@ -73,13 +73,13 @@ std::string extractName() {
         set_fstr("        Sequence: %d\n", n.reqseq);
         set_fstr("        Type: ");
         switch((n.type >> 4) & 0x0F) {
-            case REQUEST_STREAM:    set_fstr("STREAM\n"); break;
-            case REQUEST_NOTE:      set_fstr("NOTE\n"); break;
-            case REQUEST_SEQUENCE:  set_fstr("SEQUENCE\n"); break;
-            case REQUEST_SAMPLE:    set_fstr("SAMPLE\n"); break;
-            case REQUEST_SETUP:     set_fstr("SETUP\n"); break;
-            case REQUEST_EFFECT:    set_fstr("EFFECT\n"); break;
-            case REQUEST_CONFIG:    set_fstr("CONFIGURATION\n"); break;
+            case NAME_STREAM:    set_fstr("STREAM\n"); break;
+            case NAME_NOTE:      set_fstr("NOTE\n"); break;
+            case NAME_SEQUENCE:  set_fstr("SEQUENCE\n"); break;
+            case NAME_SAMPLE:    set_fstr("SAMPLE\n"); break;
+            case NAME_SETUP:     set_fstr("SETUP\n"); break;
+            case NAME_EFFECT:    set_fstr("EFFECT\n"); break;
+            case NAME_CONFIG:    set_fstr("CONFIGURATION\n"); break;
             default:                set_fstr("UNKNOWN\n"); break;
         }
         set_fstr("        Name: %s\n", (!n.name.empty()) ? n.name.c_str() : "(none)");

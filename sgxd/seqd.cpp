@@ -89,6 +89,8 @@ void unpackSeqd(unsigned char *in, const unsigned length) {
 std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
     if (sgd_debug) fprintf(stderr, "    Extract sequence\n");
 
+    mid_inf = {};
+    sgd_req = "";
     if (
         sgd_inf.seqd.empty() ||
         grp < 0 || grp >= sgd_inf.seqd.seqd.size() ||
@@ -97,21 +99,180 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
 
     const auto &sq = sgd_inf.seqd.seqd[grp].seq[seq];
 
-    if (sq.fmt == SEQD_REQUEST) return sq.data;
-    if (sq.fmt == SEQD_RAWMIDI) {
-        if (sgd_debug) fprintf(stderr, "        Set MIDI header\n");
-        mid_inf = {MIDI_SINGLE_TRACK, 1, sq.div};
+    if (sq.fmt != SEQD_REQUEST && sq.fmt != SEQD_RAWMIDI) {
+        if (sgd_debug) fprintf(stderr, "        Unknown sequence type %d\n", sq.fmt);
+        return {};
+    }
 
-        if (sgd_debug) fprintf(stderr, "        Set MIDI sequences\n");
-        unpackMesg((unsigned char*)sq.data.data(), sq.data.size());
+    if (sgd_debug) fprintf(stderr, "        Set MIDI header\n");
+    mid_inf = {MIDI_SINGLE_TRACK, 1, sq.div};
 
-        if (!sq.name.empty()) {
-            if (sgd_debug) fprintf(stderr, "        Set MIDI title\n");
-            mid_inf.msg[0].insert(
-                mid_inf.msg[0].begin(),
-                {0, META_TRACK_NAME, sq.name.c_str()}
-            );
+    if (sgd_debug) fprintf(stderr, "        Set MIDI sequences\n");
+    if (sq.fmt == SEQD_REQUEST) {
+        return sq.data;
+
+        auto get_bcd = [](auto &in, int siz, const bool is_neg, const unsigned def = 0) -> int {
+            if (!in[0]) return def;
+            
+            char tmp[16] {};
+            for (int z = 0; siz-- > 0 && *in < 0xA0; z += 2) {
+                snprintf(tmp + z, 3, "%02X", *in++);
+            }
+            
+            return strtol(tmp, nullptr, 10) * ((!is_neg) ? 1 : -1);
+        };
+        auto get_val = [&get_bcd](auto&& self, auto &in, const unsigned def = 0) -> int {
+            int typ, out;
+            if (*in >= 0xA0) return def;
+
+            typ = *in++;
+            if (typ >> 4 == SEQD_RANDOM) {
+                int b0, b1, b2;
+                b0 = self(self, in);
+                b1 = self(self, in);
+                b2 = self(self, in);
+                out = b0 + (rand() % (b1 - b2 + 1) + b2);
+            }
+            else if (typ >> 4 < SEQD_SKIP) {
+                out = get_bcd(in, typ & 0x0F, typ >> 4 == SEQD_NEGATIVE, def);
+            }
+            else {
+                auto end = in + (typ & 0x0F);
+                while (in < end) self(self, in);
+                out = def;
+            }
+            return out;
+        };
+
+        struct req { unsigned char typ; std::vector<int> dat; };
+        std::vector<req> seq_req;
+
+        //https://github.com/Nenkai/010GameTemplates/blob/main/Sony/SGXD.bt
+        for (auto ptr = sq.data.begin(); ptr < sq.data.end();) {
+            while (*ptr < 0xA0) ptr += 1;
+
+            seq_req.emplace_back();
+            auto &rq = seq_req.back();
+            switch(rq.typ = *ptr++) {
+                case SEQD_SUB_START:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_SUB_STOP:
+                case SEQD_SUB_STOPREL:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_SUB_GETSTAT:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_CONTROL:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_ADSR:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_BEND:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr, 12));
+                    rq.dat.push_back(get_val(get_val, ptr, 12));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_ADSR_DIRECT:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_START:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr, 4096));
+                    break;
+                case SEQD_STOP:
+                case SEQD_STOPREL:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_GETPORTSTAT:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_STARTSMPL:
+                case SEQD_STARTNOISE:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr, 4096));
+                    rq.dat.push_back(get_val(get_val, ptr, 128));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_SYSREG_INIT:
+                case SEQD_SYSREG_ADD:
+                case SEQD_SYSREG_MINUS:
+                case SEQD_SYSREG_MULT:
+                case SEQD_SYSREG_DIVI:
+                case SEQD_SYSREG_MODU:
+                case SEQD_SYSREG_AND:
+                case SEQD_SYSREG_OR:
+                case SEQD_SYSREG_XOR:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_WAIT:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_JUMP:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_LOOPBEG:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                case SEQD_LOOPEND:
+                    break;
+                case SEQD_JUMPNEQ:
+                case SEQD_JUMP3:
+                case SEQD_JUMPGEQ:
+                case SEQD_JUMPLES:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_CALLMKR:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_LOOPBREAK:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_PRINT:
+                    rq.dat.push_back(get_val(get_val, ptr));
+                    break;
+                case SEQD_EOR:
+                default:
+                    break;
+            }
         }
+    }
+    else {
+        unpackMesg((unsigned char*)sq.data.data(), sq.data.size());
 
         //Replace PSX-style controllers with more common ones
         if (sgd_debug) fprintf(stderr, "        Replace PSX-style MIDI controls\n");
@@ -119,15 +280,15 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
             const auto &st = md.getStat();
             if (st == STAT_CONTROLLER) {
                 const auto &dt = md.getData();
-                if (dt[0] == SEQD_PSX_LOOP) {
+                if (dt[0] == SEQD_CC_PSX_LOOP) {
 
-                    if (dt[1] == SEQD_PSX_LOOPSTART) {
+                    if (dt[1] == SEQD_CC_PSX_LOOPSTART) {
                         md = {
                             md.getTime(), st,
                             (unsigned char[]){CC_XML_LOOPSTART, CC_XML_LOOPINFINITE}
                         };
                     }
-                    if (dt[1] == SEQD_PSX_LOOPEND) {
+                    if (dt[1] == SEQD_CC_PSX_LOOPEND) {
                         md = {
                             md.getTime(), st,
                             (unsigned char[]){CC_XML_LOOPEND, CC_XML_LOOPRESERVED}
@@ -136,7 +297,7 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
                 }
 
                 //Replaces psx event with text
-                if (dt[0] == SEQD_PSX_SONGEVENT) {
+                if (dt[0] == SEQD_CC_SONGEVENT) {
                     md = {
                         md.getTime(), META_CUE,
                         ("SongEvent_" + std::to_string(dt[1])).c_str()
@@ -147,8 +308,15 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
         return packMidi();
     }
 
-    if (sgd_debug) fprintf(stderr, "        Unknown sequence type %d\n", sq.fmt);
-    return {};
+    if (!sq.name.empty()) {
+        if (sgd_debug) fprintf(stderr, "        Set MIDI title\n");
+        mid_inf.msg[0].insert(
+            mid_inf.msg[0].begin(),
+            {0, META_TRACK_NAME, sq.name.c_str()}
+        );
+    }
+
+    return packMidi();
 }
 
 ///Extracts variable sequence definitions into string

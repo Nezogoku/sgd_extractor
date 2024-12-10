@@ -12,7 +12,6 @@ std::vector<short> decodeSonyShrtAdpcm(unsigned char *in, const unsigned length,
     const unsigned char *in_end = in + length;
     const unsigned short VAG_SHORT_BLOCK_ALIGN = 4;
     const unsigned short VAG_SHORT_BLOCK_SAMPLES = (VAG_SHORT_BLOCK_ALIGN - 1) * 2;
-    const unsigned short VAG_SHORT_BLOCK_FULL = VAG_SHORT_BLOCK_SAMPLES * chns;
     const double VAG_SHORT_LOOKUP_TABLE[][2] = {
         {0.0, 0.0},
         {60.0 / 64.0, 0.0},
@@ -34,35 +33,35 @@ std::vector<short> decodeSonyShrtAdpcm(unsigned char *in, const unsigned length,
     std::vector<short> out;
 
     double hist[chns][2] {};
-    for (int ch_i = 0; in < in_end; ++ch_i) {
-        int o_sz = out.size();
-        unsigned char coef = *(in++);
-        unsigned char data[VAG_SHORT_BLOCK_SAMPLES] {};
+    for (int ba_i = 0; ba_i < length / (VAG_SHORT_BLOCK_ALIGN * chns); ++ba_i) {
+        int data[VAG_SHORT_BLOCK_SAMPLES * chns] {};
+        
+        for (int ch_i = 0; ch_i < chns; ++ch_i) {
+            unsigned char coef = *(in++);
+            for (int n = 0; n < VAG_SHORT_BLOCK_SAMPLES; ++in) {
+                data[(chns * n++) + ch_i] = in[0] & 0x0F;
+                data[(chns * n++) + ch_i] = in[0] >> 4;
+            }
+            
+            for (int bs_i = 0; bs_i < VAG_SHORT_BLOCK_SAMPLES; ++bs_i) {
+                auto &smpl = data[(chns * bs_i) + ch_i];
+                smpl <<= 12;
+                if ((short)smpl < 0) smpl |= 0xFFFF0000;
 
-        for (int n = 0; n < VAG_SHORT_BLOCK_SAMPLES; ++in) {
-            data[n++] = in[0] & 0x0F;
-            data[n++] = in[0] >> 4;
+                float tsmp;
+                tsmp = smpl;
+                tsmp = short(tsmp) >> (coef & 0x0F);
+                tsmp += hist[ch_i][0] * VAG_SHORT_LOOKUP_TABLE[coef >> 4][0];
+                tsmp += hist[ch_i][1] * VAG_SHORT_LOOKUP_TABLE[coef >> 4][1];
+
+                hist[ch_i][1] = hist[ch_i][0];
+                hist[ch_i][0] = tsmp;
+
+                smpl = std::min(SHRT_MAX, std::max(int(std::round(tsmp)), SHRT_MIN));
+            }
         }
-
-        out.resize(o_sz + VAG_SHORT_BLOCK_FULL);
-        for (int bs_i = 0; bs_i < VAG_SHORT_BLOCK_SAMPLES; ++bs_i) {
-            short smpl;
-            smpl = data[bs_i];
-            smpl <<= 12;
-            if (smpl & 0x8000) smpl |= 0xFFFF0000;
-
-            float tsmp;
-            tsmp = smpl;
-            tsmp = short(tsmp) >> (coef & 0x0F);
-            tsmp += hist[ch_i][0] * VAG_SHORT_LOOKUP_TABLE[coef >> 4][0];
-            tsmp += hist[ch_i][1] * VAG_SHORT_LOOKUP_TABLE[coef >> 4][1];
-
-            hist[ch_i][1] = hist[ch_i][0];
-            hist[ch_i][0] = tsmp;
-
-            smpl = std::min(SHRT_MAX, std::max(int(std::round(tsmp)), SHRT_MIN));
-            out[o_sz + (bs_i * chns) + (ch_i % chns)] = smpl;
-        }
+        
+        out.insert(out.end(), data, data + (VAG_SHORT_BLOCK_SAMPLES * chns));
     }
 
     return out;

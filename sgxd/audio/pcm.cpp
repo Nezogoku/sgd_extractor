@@ -1,6 +1,5 @@
 #include <cmath>
 #include <climits>
-#include <cstdlib>
 #include <vector>
 #include "audio_func.hpp"
 
@@ -16,10 +15,10 @@ std::vector<short> decodePcm(unsigned char *in, const unsigned length, const uns
         length % align) return {};
 
     const unsigned char *in_end = in + length;
-    const unsigned PCM_VAL = 1LL << bits;
-    const unsigned PCM_VAL_2 = PCM_VAL >> 1;
-    const signed PCM_MIN = (!is_signed) ? 0 : -PCM_VAL_2;
-    const unsigned PCM_MAX = ((!is_signed) ? PCM_VAL : PCM_VAL_2) - 1;
+    const unsigned long long PCM_VAL = 1LL << bits;
+    const unsigned long long PCM_VAL_2 = PCM_VAL >> 1;
+    const signed long long PCM_MIN = (!is_signed) ? 0 : -PCM_VAL_2;
+    const unsigned long long PCM_MAX = ((!is_signed) ? PCM_VAL : PCM_VAL_2) - 1;
     std::vector<short> out(length / bytes);
 
     auto get_smp = [&in, &is_be](int length) -> unsigned {
@@ -38,9 +37,9 @@ std::vector<short> decodePcm(unsigned char *in, const unsigned length, const uns
     float hist[chns] {};
     for (int sm_i = 0, ch_i = 0; in < in_end; ++sm_i) {
         int tsmp = get_smp(bytes);
+
         if (is_lalign) tsmp >>= ((bytes * 8) - bits);
         if (is_signed && (tsmp & (PCM_VAL - 1))) tsmp |= (-1LL >> bits) << bits;
-
         if (!is_signed) tsmp -= PCM_VAL_2;
         if (bits != 16) {
             float state, tsmp1;
