@@ -7,12 +7,11 @@
 
 ///Decodes Sony ADPCM
 std::vector<short> decodeSonyAt3p(unsigned char *in, const unsigned length, const unsigned smpls,
-                                  const unsigned short align, const unsigned short chns, const unsigned skip) {
+                                  const unsigned short align, const unsigned short chns, const unsigned *skip) {
     if (!in || !length || !align || !chns) return {};
 
     const unsigned char *in_end = in + length;
     const unsigned short AT3P_FRAME_SAMPLES = 2048;
-    const unsigned short AT3P_FRAME_FULL = AT3P_FRAME_SAMPLES * chns;
     MaiAT3PlusFrameDecoder t_st;
     std::vector<short> out;
     short *cur = 0, *end = 0;
@@ -21,25 +20,23 @@ std::vector<short> decodeSonyAt3p(unsigned char *in, const unsigned length, cons
     cur = out.data(); end = cur + out.size();
 
     while (in < in_end) {
-        Mai_I8 in_buf[align] {};
-        Mai_I16 data[AT3P_FRAME_FULL] {}, **t_ptr = new Mai_I16*[1] {};
+        Mai_I8 buf[align] {};
+        Mai_I16 *ptr = 0;
         Mai_I32 o_ch;
-        int num_s = sizeof(data) / sizeof(Mai_I16);
+        int num_s = AT3P_FRAME_SAMPLES * chns;
 
-        for (auto &b : in_buf) {
+        for (auto &b : buf) {
             if (in >= in_end) break;
             b = *(in++);
         }
 
-        t_ptr[0] = data;
-        if (t_st.decodeFrame(in_buf, align, &o_ch, t_ptr)) continue;
+        if (t_st.decodeFrame(buf, align, &o_ch, &ptr)) continue;
         if (o_ch != chns) continue;
         if (cur + num_s > end) num_s = end - cur;
         
-        std::move(data, data + num_s, cur);
-        cur += num_s;
+        if (ptr) { std::move(ptr, ptr + num_s, cur); cur += num_s; }
     }
-    //out.erase(out.begin(), out.begin() + (skip * chns));
+    if (skip) out.erase(out.begin(), out.begin() + (*skip * chns));
 
     if (cur < end) out.resize(cur - out.data());
     return std::move(out);

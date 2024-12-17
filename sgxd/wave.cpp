@@ -142,7 +142,7 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     wav_inf.wavl[0].chnk.getArr().data(),
                     wav_inf.wavl[0].chnk.size() - 8, out.wave[w].loopsmp,
                     wav_inf.fmt.align, out.wave[w].chns,
-                    (!wav_inf.fact.smpinfo.empty()) ? wav_inf.fact.smpinfo[0] : 0
+                    (!wav_inf.fact.smpinfo.empty()) ? &wav_inf.fact.smpinfo[0] : 0
                 );
                 break;
 #endif

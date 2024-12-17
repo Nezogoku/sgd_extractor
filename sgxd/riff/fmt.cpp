@@ -62,7 +62,7 @@ void unpackFmt(unsigned char *in, const unsigned length,
             case CODEC_EXTENSIBLE:
                 if (t_sz >= 2 ) wav_inf.fmt.smpinfo = get_int(2);
                 if (t_sz >= 6 ) wav_inf.fmt.chnmask = get_int(4);
-                if (t_sz >= 24) wav_inf.fmt.guid = get_uid();
+                if (t_sz >= 22) wav_inf.fmt.guid = get_uid();
             default:
                 while (in < in_end) wav_inf.fmt.extra.push_back(*(in++));
         }
