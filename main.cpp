@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <string>
 #define ALLSGXD_IMPLEMENTATION
-#define SONYPSPAUDIO_IMPLEMENTATION
 #include "sgxd/sgxd_func.hpp"
 #include "printpause.hpp"
 
@@ -55,6 +54,7 @@ int main(int argc, char *argv[]) {
             if (tfle.rfind(".sgd") != std::string::npos) {
                 if (debug) fprintf(stderr, "This is a game data archive file\n");
                 get_sgd(tfle.c_str());
+                continue;
             }
             else if (tfle.rfind(".sgh") != std::string::npos) {
                 if (debug) fprintf(stderr, "This is a game data archive header file\n");
@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
                 if (sgb.empty()) continue;
             }
             else if (tfle.rfind(".sgb") != std::string::npos) {
-                if (debug) fprintf(stderr, "This is a game data archive header file\n");
+                if (debug) fprintf(stderr, "This is a game data archive body file\n");
                 sgb = tfle;
                 if (sgh.empty()) continue;
             }

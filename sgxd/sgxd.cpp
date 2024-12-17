@@ -2,11 +2,11 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#include "directory.hpp"
 #include "sgxd_forms.hpp"
 #include "sgxd_const.hpp"
 #include "sgxd_types.hpp"
 #include "sgxd_func.hpp"
+#include "directory.hpp"
 
 
 ///Unpacks SGXD info from SGXD file(s)
@@ -274,7 +274,7 @@ void extractSgxd(const char *folder) {
 
         std::string nam = "/" + sgd_inf.file + ".sf2";
         const auto sf2 = rgndToSfbk();
-        if (createFile((out + tmp + nam).c_str(), (unsigned char*)sf2.data(), sf2.size())) {
+        if (!sf2.empty() && createFile((out + tmp + nam).c_str(), (unsigned char*)sf2.data(), sf2.size())) {
             fprintf(stdout, "        Extracted %s\n", nam.c_str());
         }
         else fprintf(stderr, "        Unable to extract %s\n", nam.c_str());
@@ -317,7 +317,7 @@ void extractSgxd(const char *folder) {
                 ext = (sq.fmt > SEQD_RAWMIDI) ? ".unk" : ".mid";
                 nam = "/" + nam + ext;
 
-                if (createFile((out + tmp + nam).c_str(), (unsigned char*)seq.data(), seq.size())) {
+                if (!seq.empty() && createFile((out + tmp + nam).c_str(), (unsigned char*)seq.data(), seq.size())) {
                     fprintf(stdout, "        Extracted %s\n", nam.c_str());
                 }
                 else fprintf(stderr, "        Unable to extract %s\n", nam.c_str());
@@ -360,7 +360,7 @@ void extractSgxd(const char *folder) {
             }
             nam = "/" + nam + ".wav";
 
-            if (createFile((out + tmp + nam).c_str(), (unsigned char*)wav.data(), wav.size())) {
+            if (!wav.empty() && createFile((out + tmp + nam).c_str(), (unsigned char*)wav.data(), wav.size())) {
                 fprintf(stdout, "        Extracted %s\n", nam.c_str());
             }
             else fprintf(stderr, "        Unable to extract %s\n", nam.c_str());
@@ -418,7 +418,7 @@ void extractSgxd(const char *folder) {
             }
             nam = "/" + nam + ".txt";
 
-            if (createFile((out + tmp + nam).c_str(), cnf.text.data(), cnf.text.size())) {
+            if (!cnf.text.empty() && createFile((out + tmp + nam).c_str(), cnf.text.data(), cnf.text.size())) {
                 fprintf(stdout, "        Extracted %s\n", nam.c_str());
             }
             else fprintf(stderr, "        Unable to extract %s\n", nam.c_str());

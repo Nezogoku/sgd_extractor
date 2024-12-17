@@ -1,12 +1,12 @@
 #include <bitset>
 #include <cstdio>
 #include <vector>
-#include "midi/midi_const.hpp"
-#include "midi/midi_types.hpp"
-#include "midi/midi_func.hpp"
 #include "sgxd_const.hpp"
 #include "sgxd_types.hpp"
 #include "sgxd_func.hpp"
+#include "midi/midi_const.hpp"
+#include "midi/midi_types.hpp"
+#include "midi/midi_func.hpp"
 
 
 ///Unpacks variable sequence definitions from SEQD data
@@ -109,7 +109,8 @@ std::vector<unsigned char> seqdToMidi(const int &grp, const int &seq) {
 
     if (sgd_debug) fprintf(stderr, "        Set MIDI sequences\n");
     if (sq.fmt == SEQD_REQUEST) {
-        return sq.data;
+        //Will get to this later...
+        return {};
 
         auto get_bcd = [](auto &in, int siz, const bool is_neg, const unsigned def = 0) -> int {
             if (!in[0]) return def;

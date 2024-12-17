@@ -21,6 +21,7 @@
 //
 // Feature contributors:
 //    Dougall Johnson (sample-exact seeking)
+//    Vitaly Novichkov (sample-accurate tell)
 //
 // Bugfix/warning contributors:
 //    Terje Mathisen     Niklas Frykholm     Andy Hill
@@ -34,6 +35,7 @@
 //    github:audinowho   Dougall Johnson     David Reid
 //    github:Clownacy    Pedro J. Estebanez  Remi Verschelde
 //    AnthoFoxo          github:morlat       Gabriel Ravier
+//    Alice Rowan
 //
 // Partial history:
 //    1.22    - 2021-07-11 - various small fixes
@@ -149,8 +151,10 @@ typedef struct
 // get general information about the file
 extern stb_vorbis_info stb_vorbis_get_info(stb_vorbis *f);
 
+#ifndef STB_VORBIS_NO_COMMENTS
 // get ogg comments
 extern stb_vorbis_comment stb_vorbis_get_comment(stb_vorbis *f);
+#endif
 
 // get the last error detected (clears it, too)
 extern int stb_vorbis_get_error(stb_vorbis *f);
@@ -164,6 +168,12 @@ extern void stb_vorbis_close(stb_vorbis *f);
 // it becomes valid again.
 // NOT WORKING YET after a seek with PULLDATA API
 extern int stb_vorbis_get_sample_offset(stb_vorbis *f);
+
+//  this function returns the count of returned samples from the beginning of the
+//  file. Functions "stb_vorbis_get_samples_*", "stb_vorbis_seek_*()" will
+//  affect the returned value. Use this call to get the accurate sample position
+//  during playback.
+extern int stb_vorbis_get_playback_sample_offset(stb_vorbis *f);
 
 // returns the current seek point within the file, or offset from the beginning
 // of the memory buffer. In pushdata mode it returns 0.
@@ -293,6 +303,11 @@ extern stb_vorbis * stb_vorbis_open_file_section(FILE *f, int close_handle_on_cl
 // on failure, returns NULL and sets *error. note that stb_vorbis must "own"
 // this stream; if you seek it in between calls to stb_vorbis, it will become
 // confused.
+#endif
+
+#ifdef STB_VORBIS_SDL
+extern stb_vorbis * stb_vorbis_open_io_section(SDL_IOStream *io, int close_on_free, int *error, const stb_vorbis_alloc *alloc, unsigned int length);
+extern stb_vorbis * stb_vorbis_open_io(SDL_IOStream *io, int close_on_free, int *error, const stb_vorbis_alloc *alloc);
 #endif
 
 extern int stb_vorbis_seek_frame(stb_vorbis *f, unsigned int sample_number);

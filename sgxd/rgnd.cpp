@@ -4,14 +4,14 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "sgxd_types.hpp"
+#include "sgxd_func.hpp"
 #include "riff/riff_forms.hpp"
 #include "riff/riffsfbk_forms.hpp"
 #include "riff/riffsfbk_const.hpp"
 #include "riff/riffsfbk_types.hpp"
 #include "riff/riffsfbk_func.hpp"
 #include "midi/midi_const.hpp"
-#include "sgxd_types.hpp"
-#include "sgxd_func.hpp"
 
 
 ///Unpacks variable region definitions from RGND data
@@ -205,8 +205,8 @@ std::vector<unsigned char> rgndToSfbk() {
                         {GN_CHORUS_EFFECTS_SEND, ton.effect}, // Chorus
                         {GN_REVERB_EFFECTS_SEND, ((ton.genwet - ton.gendry) * 1000) / 4096.00}, // Reverb
                         {GN_DRY_PAN, (((ton.vol1 + 1024) * 1000) / 2048.00) - 500}, // Dry pan
-                        {GN_MODULATION_ENV_RELEASE, 1200 * log2(ton.env0 / 100.00)}, // Envelope 1
-                        {GN_VOLUME_ENV_RELEASE, 1200 * log2(ton.env1 / 100.00)}, // Envelope 2
+                        {GN_VOLUME_ENV_RELEASE, 1200 * log2(ton.env0 / 100.00)}, // Envelope 1
+                        {GN_MODULATION_ENV_DECAY, 1200 * log2(ton.env1 / 100.00)}, // Envelope 2
                         //{GN_INITIAL_ATTENUATION, 1440 - ((ton.vol0 * 1440) / 4096.00)}, // Initial attenuation
                         {GN_PITCH_COARSE_TUNE, (ton.noteroot < 0) ? 127 + ton.noteroot : 0}, // Coarse tune
                         {GN_PITCH_FINE_TUNE, ton.notetune}, // Fine tune

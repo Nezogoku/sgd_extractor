@@ -19,6 +19,11 @@ enum SgxdRgndFlag : unsigned {
     RGND_SAMPLEID               = 1 << 2,
 };
 
+///SGXD Sequence Flags
+enum SgxdSeqdFlag : unsigned {
+    SEQD_LOOPED                 = 1 << 0,
+};
+
 ///SGXD Sequence Type
 enum SgxdSeqdType : short { SEQD_REQUEST = 0, SEQD_RAWMIDI };
 
@@ -78,6 +83,13 @@ enum SgxdSeqdCC : unsigned char {
     //PSX-style loop values
     SEQD_CC_PSX_LOOPSTART       = 0x14,
     SEQD_CC_PSX_LOOPEND         = 0x1E,
+};
+
+///SGXD Waveform Flags
+enum SgxdWaveFlag : unsigned {
+    WAVE_MONO                   = 1 << 0,
+    WAVE_WSUR_REQUEST           = 1 << 1,
+    WAVE_WMKR_REQUEST           = 1 << 2,
 };
 
 ///SGXD Name Request Values

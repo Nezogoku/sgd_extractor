@@ -2,7 +2,12 @@
 #include <bitset>
 #include <cstdio>
 #include <vector>
+#ifdef DECODESONYAT3P_IMPLEMENTATION
 #define NEEDEDRIFFWAVE_IMPLEMENTATION
+#endif
+#include "sgxd_const.hpp"
+#include "sgxd_types.hpp"
+#include "sgxd_func.hpp"
 #include "audio/audio_func.hpp"
 #include "riff/fourcc_type.hpp"
 #include "riff/chunk_type.hpp"
@@ -13,13 +18,12 @@
 #include "riff/riffwave_const.hpp"
 #include "riff/riffwave_types.hpp"
 #include "riff/riffwave_func.hpp"
-#include "sgxd_const.hpp"
-#include "sgxd_types.hpp"
-#include "sgxd_func.hpp"
 
 
+#ifdef DECODESONYAT3P_IMPLEMENTATION
 ///SGXD AT3P GUID
 MAKEUUID(WAVE_GUID_SONYATRAC3PLUS, 0xE923AABF, 0xCB58, 0x4471, 0xA119FFFA01E4CE62);
+#endif
 
 ///Unpacks variable waveform definitions from WAVE data
 void unpackWave(unsigned char *in, const unsigned length) {
@@ -98,22 +102,32 @@ void unpackWave(unsigned char *in, const unsigned length) {
         if (sgd_debug) fprintf(stderr, "        Current waveform: %d\n", w);
 
         switch(tinf[w][0] & 0xFF) {
-#ifdef DECODEPCM_IMPLEMENTATION
+#if 1
             case SGXD_CODEC_PCM16LE:
             case SGXD_CODEC_PCM16BE:
-                if (sgd_debug) fprintf(stderr, "            Decode PCM\n");
-                out.wave[w].pcm = decodePcm(
-                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], 2,
-                    out.wave[w].chns, 16, 2, tinf[w][0]
+                if (sgd_debug) fprintf(
+                    stderr,
+                    "            Decode 16bit %s Endian PCM\n",
+                    (tinf[w][0] & 0xFF) == SGXD_CODEC_PCM16LE ? "Little" : "Big"
                 );
+                in = (unsigned char*)sgd_dat_beg + tinf[w][2];
+                for (int d = 0; d < tinf[w][1]; ++d) {
+                    if ((tinf[w][0] & 0xFF) == SGXD_CODEC_PCM16LE) out.wave[w].pcm.push_back(get_int(2));
+                    else { out.wave[w].pcm.push_back((short)in[0] << 8 | in[1]); in += 2; }
+                }
                 break;
 #endif
 #ifdef DECODESONYADPCM_IMPLEMENTATION
             case SGXD_CODEC_SONY_ADPCM:
-                if (sgd_debug) fprintf(stderr, "            Decode Sony ADPCM\n");
+            case SGXD_CODEC_SONY_SHORT_ADPCM:
+                if (sgd_debug) fprintf(
+                    stderr,
+                    "            Decode Sony %s\n",
+                    (tinf[w][0] & 0xFF) == SGXD_CODEC_SONY_SHORT_ADPCM ? "Short ADPCM" : "ADPCM"
+                );
                 out.wave[w].pcm = decodeSonyAdpcm(
-                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1],
-                    out.wave[w].chns
+                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], out.wave[w].loopsmp,
+                    out.wave[w].chns, (tinf[w][0] & 0xFF) == SGXD_CODEC_SONY_SHORT_ADPCM
                 );
                 break;
 #endif
@@ -126,17 +140,9 @@ void unpackWave(unsigned char *in, const unsigned length) {
                 else if (wav_inf.wavl.empty()) continue;
                 out.wave[w].pcm = decodeSonyAt3p(
                     wav_inf.wavl[0].chnk.getArr().data(),
-                    wav_inf.wavl[0].chnk.size() - 8,
+                    wav_inf.wavl[0].chnk.size() - 8, out.wave[w].loopsmp,
                     wav_inf.fmt.align, out.wave[w].chns,
                     (!wav_inf.fact.smpinfo.empty()) ? wav_inf.fact.smpinfo[0] : 0
-                );
-                break;
-#endif
-#ifdef DECODESONYSHRTADPCM_IMPLEMENTATION
-            case SGXD_CODEC_SONY_SHORT_ADPCM:
-                if (sgd_debug) fprintf(stderr, "            Decode Sony Short ADPCM\n");
-                out.wave[w].pcm = decodeSonyShrtAdpcm(
-                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], out.wave[w].chns
                 );
                 break;
 #endif
@@ -147,10 +153,10 @@ void unpackWave(unsigned char *in, const unsigned length) {
                     (sgd_dat_beg + tinf[w][2])[2] == 0x67 &&
                     (sgd_dat_beg + tinf[w][2])[3] == 0x53);
                 else {
-                    if (sgd_debug) fprintf(stderr, "            Decode Dolby AC3\n");
+                    if (sgd_debug) fprintf(stderr, "            Decode Dolby AC-3\n");
                     out.wave[w].pcm = decodeDolbyAc3(
                         (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1],
-                        out.wave[w].rate1, out.wave[w].chns
+                        out.wave[w].loopsmp, out.wave[w].rate1, out.wave[w].chns
                     );
                     break;
                 }
@@ -159,7 +165,8 @@ void unpackWave(unsigned char *in, const unsigned length) {
             case SGXD_CODEC_OGG_VORBIS:
                 if (sgd_debug) fprintf(stderr, "            Decode Ogg-Vorbis\n");
                 out.wave[w].pcm = decodeOgg(
-                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1], out.wave[w].chns
+                    (unsigned char*)sgd_dat_beg + tinf[w][2], tinf[w][1],
+                    out.wave[w].loopsmp, (unsigned short*)&out.wave[w].chns
                 );
                 break;
 #endif
@@ -174,18 +181,14 @@ void unpackWave(unsigned char *in, const unsigned length) {
         if (out.wave[w].loopend < 0) out.wave[w].loopend = out.wave[w].loopsmp;
         
         if (!out.wave[w].pcm.empty()) {
-            if (out.wave[w].pcm.size() < (out.wave[w].loopsmp * out.wave[w].chns)) out.wave[w].pcm.clear();
-            else if (
+            if (
                 std::all_of(
                     out.wave[w].pcm.begin(),
                     out.wave[w].pcm.end(),
                     [](const short &s) { return !s; }
                 )
             ) out.wave[w].pcm.clear();
-        }
-        else {
-            out.wave[w].pcm.resize(out.wave[w].loopsmp * out.wave[w].chns);
-            if (sgd_debug) fprintf(stderr, "            Audio decode successful\n");
+            else if (sgd_debug) fprintf(stderr, "            Audio decode successful\n");
         }
     }
 }
@@ -197,7 +200,8 @@ std::vector<unsigned char> waveToWave(const int &wav) {
     wav_inf = {};
     if (
         sgd_inf.wave.empty() ||
-        wav < 0 || wav >= sgd_inf.wave.wave.size()
+        wav < 0 || wav >= sgd_inf.wave.wave.size() ||
+        sgd_inf.wave.wave[wav].pcm.empty()
     ) return {};
 
     const auto &wv = sgd_inf.wave.wave[wav];
