@@ -9,6 +9,8 @@ Borrowed code from jmarti856 and vgmstream (sgxd/audio) with some minor changes.
 
 Information on SGXD based off of personal exploration and information pulled from https://github.com/Nenkai/010GameTemplates/blob/main/Sony/SGXD.bt.
 
+Currently has trouble decoding multi-channel Ogg Vorbis data.
+
 ## How to use
 
 `sgd_extractor` and `sgd_extractor -h` displays a help message
