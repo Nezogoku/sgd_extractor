@@ -36,8 +36,8 @@ std::vector<short> decodeSonyAt3p(unsigned char *in, const unsigned length, cons
         
         if (ptr) { std::move(ptr, ptr + num_s, cur); cur += num_s; }
     }
-    if (skip) out.erase(out.begin(), out.begin() + (*skip * chns));
 
     if (cur < end) out.resize(cur - out.data());
+    if (skip) out.erase(out.begin(), out.begin() + (*skip * chns));
     return std::move(out);
 }
