@@ -5,7 +5,7 @@
 #include "maiatrac3plus/MaiAT3PlusFrameDecoder.h"
 #include "audio_func.hpp"
 
-///Decodes Sony ADPCM
+///Decodes Sony AT3+
 std::vector<short> decodeSonyAt3p(unsigned char *in, const unsigned length, const unsigned smpls,
                                   const unsigned short align, const unsigned short chns, const unsigned *skip) {
     if (!in || !length || !align || !chns) return {};
