@@ -1,12 +1,18 @@
 # sgd_extractor
-Extracts audio from sgd files and converts them to wav files.
+Extracts miscellaneous data from Sony .sgd and .sgh+.sgb files.
+SGD files contain the entire data.
+SGH files are headers whereas SGB files contain the audio.
 
-Included stb_vorbis (decode/vorbis) and a52 (decode/ac3) libraries.
+Included a52, maiatrac3plus, and stb_vorbis libraries.
 
-Borrowed code from jmarti856 and vgmstream (decode/psadpcm) with some minor changes.
+Borrowed code from jmarti856 and vgmstream (sgxd/audio) with some minor changes.
 
-Currently extracts all known audio types except for Atrac3+.
+Information on SGXD based off of personal exploration and information pulled from https://github.com/Nenkai/010GameTemplates/blob/main/Sony/SGXD.bt.
 
-    USAGE: sgd_extractor.exe [-d] <file(s).sgd>
-        
-        -d prints a log
+## How to use
+
+`sgd_extractor` and `sgd_extractor -h` displays a help message
+
+`sgd_extractor -d ...` toggles debug mode
+
+`sgd_extractor -t ...` activates text extraction mode (following .sgd files have textual information additionally extracted)
