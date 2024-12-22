@@ -7,7 +7,7 @@
 #include "audio_func.hpp"
 
 
-///Decodes Sony ADPCM
+///Decodes Dolby AC3
 std::vector<short> decodeDolbyAc3(unsigned char *in, const unsigned length, const unsigned smpls,
                                   const unsigned short align, const unsigned short chns) {
     if (!in || length < 7 || !align) return {};
